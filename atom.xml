@@ -439,9 +439,9 @@
     
       <category term="Android" scheme="http://blog.clarkhuang.com/tags/Android/"/>
     
-      <category term="Kernel" scheme="http://blog.clarkhuang.com/tags/Kernel/"/>
-    
       <category term="Ubuntu" scheme="http://blog.clarkhuang.com/tags/Ubuntu/"/>
+    
+      <category term="Kernel" scheme="http://blog.clarkhuang.com/tags/Kernel/"/>
     
   </entry>
   
@@ -913,9 +913,9 @@
     
       <category term="Linux" scheme="http://blog.clarkhuang.com/tags/Linux/"/>
     
-      <category term="C" scheme="http://blog.clarkhuang.com/tags/C/"/>
-    
       <category term="BOFA" scheme="http://blog.clarkhuang.com/tags/BOFA/"/>
+    
+      <category term="C" scheme="http://blog.clarkhuang.com/tags/C/"/>
     
   </entry>
   
