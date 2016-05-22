@@ -1,0 +1,748 @@
+<!doctype html>
+
+
+
+  
+
+
+<html class="theme-next pisces use-motion">
+<head>
+  <meta charset="UTF-8"/>
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform" />
+<meta http-equiv="Cache-Control" content="no-siteapp" />
+
+
+
+
+
+
+
+
+
+
+
+
+  <link href="/vendors/fancybox/source/jquery.fancybox.css?v=2.1.5" rel="stylesheet" type="text/css"/>
+
+
+
+
+  
+  
+  
+  
+
+  
+    
+    
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+    
+    
+    <link href="//fonts.googleapis.com/css?family=Lato:300,300italic,400,400italic,700,700italic&subset=latin,latin-ext" rel="stylesheet" type="text/css">
+  
+
+
+
+
+<link href="/vendors/font-awesome/css/font-awesome.min.css?v=4.4.0" rel="stylesheet" type="text/css" />
+
+<link href="/css/main.css?v=5.0.1" rel="stylesheet" type="text/css" />
+
+
+  <meta name="keywords" content="Android,Linux," />
+
+
+
+
+
+  <link rel="alternate" href="/atom.xml" title="Clark Huang's Blog" type="application/atom+xml" />
+
+
+
+
+  <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=5.0.1" />
+
+
+
+
+
+
+<meta name="description" content="现在的Android手机双核、四核变得非常普遍，同时CPU频率经常轻松上2G，功耗肯定会显著增加。而大多数的ARM架构的CPU采用的是对称多处理（SMP）的方式处理多CPU。这就意味着每个CPU核心是被平等对待的，同时打开又同时关闭。显然，这样的做法在Mobile Device上显得很耗能。所以，Qualcomm的Snapdragon CPU使用了一种叫非对称多处理（aSMP）的技术，每个CPU核">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Android下设置CPU核心数和频率">
+<meta property="og:url" content="http://blog.clarkhuang.com/2014/05/04/android-cpu-frequency-configuration/index.html">
+<meta property="og:site_name" content="Clark Huang's Blog">
+<meta property="og:description" content="现在的Android手机双核、四核变得非常普遍，同时CPU频率经常轻松上2G，功耗肯定会显著增加。而大多数的ARM架构的CPU采用的是对称多处理（SMP）的方式处理多CPU。这就意味着每个CPU核心是被平等对待的，同时打开又同时关闭。显然，这样的做法在Mobile Device上显得很耗能。所以，Qualcomm的Snapdragon CPU使用了一种叫非对称多处理（aSMP）的技术，每个CPU核">
+<meta property="og:updated_time" content="2016-05-22T05:05:47.000Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Android下设置CPU核心数和频率">
+<meta name="twitter:description" content="现在的Android手机双核、四核变得非常普遍，同时CPU频率经常轻松上2G，功耗肯定会显著增加。而大多数的ARM架构的CPU采用的是对称多处理（SMP）的方式处理多CPU。这就意味着每个CPU核心是被平等对待的，同时打开又同时关闭。显然，这样的做法在Mobile Device上显得很耗能。所以，Qualcomm的Snapdragon CPU使用了一种叫非对称多处理（aSMP）的技术，每个CPU核">
+
+
+
+<script type="text/javascript" id="hexo.configuration">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    scheme: 'Pisces',
+    sidebar: {"position":"left","display":"post"},
+    fancybox: true,
+    motion: true,
+    duoshuo: {
+      userId: 0,
+      author: '博主'
+    }
+  };
+</script>
+
+  <title> Android下设置CPU核心数和频率 | Clark Huang's Blog </title>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-Hans">
+
+  
+
+
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+            (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+          m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+  ga('create', 'UA-26466751-3', 'auto');
+  ga('send', 'pageview');
+</script>
+
+
+  <script type="text/javascript">
+    var _hmt = _hmt || [];
+    (function() {
+      var hm = document.createElement("script");
+      hm.src = "//hm.baidu.com/hm.js?f53fb8d5808312d5d66b81646e2c1f5c";
+      var s = document.getElementsByTagName("script")[0];
+      s.parentNode.insertBefore(hm, s);
+    })();
+  </script>
+
+
+
+
+
+
+
+
+  
+  
+    
+  
+
+  <div class="container one-collumn sidebar-position-left page-post-detail ">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-meta ">
+  
+
+  <div class="custom-logo-site-title">
+    <a href="/"  class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <span class="site-title">Clark Huang's Blog</span>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+  <p class="site-subtitle">Activity is the only road to knowledge.</p>
+</div>
+
+<div class="site-nav-toggle">
+  <button>
+    <span class="btn-bar"></span>
+    <span class="btn-bar"></span>
+    <span class="btn-bar"></span>
+  </button>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        <li class="menu-item menu-item-home">
+          <a href="/" rel="section">
+            
+              <i class="menu-item-icon fa fa-home fa-fw"></i> <br />
+            
+            首页
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-categories">
+          <a href="/categories" rel="section">
+            
+              <i class="menu-item-icon fa fa-th fa-fw"></i> <br />
+            
+            分类
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-tags">
+          <a href="/tags" rel="section">
+            
+              <i class="menu-item-icon fa fa-tags fa-fw"></i> <br />
+            
+            标签
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-archives">
+          <a href="/archives" rel="section">
+            
+              <i class="menu-item-icon fa fa-archive fa-fw"></i> <br />
+            
+            归档
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-about">
+          <a href="/about" rel="section">
+            
+              <i class="menu-item-icon fa fa-user fa-fw"></i> <br />
+            
+            关于
+          </a>
+        </li>
+      
+
+      
+    </ul>
+  
+
+  
+</nav>
+
+ </div>
+    </header>
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal " itemscope itemtype="http://schema.org/Article">
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+            
+            
+              
+                Android下设置CPU核心数和频率
+              
+            
+          </h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            <span class="post-meta-item-icon">
+              <i class="fa fa-calendar-o"></i>
+            </span>
+            <span class="post-meta-item-text">发表于</span>
+            <time itemprop="dateCreated" datetime="2014-05-04T19:30:42+08:00" content="2014-05-04">
+              2014-05-04
+            </time>
+          </span>
+
+          
+            <span class="post-category" >
+              &nbsp; | &nbsp;
+              <span class="post-meta-item-icon">
+                <i class="fa fa-folder-o"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+              
+                <span itemprop="about" itemscope itemtype="https://schema.org/Thing">
+                  <a href="/categories/移动计算/" itemprop="url" rel="index">
+                    <span itemprop="name">移动计算</span>
+                  </a>
+                </span>
+
+                
+                
+
+              
+            </span>
+          
+
+          
+            
+              <span class="post-comments-count">
+                &nbsp; | &nbsp;
+                <a href="/2014/05/04/android-cpu-frequency-configuration/#comments" itemprop="discussionUrl">
+                  <span class="post-comments-count ds-thread-count" data-thread-key="2014/05/04/android-cpu-frequency-configuration/" itemprop="commentsCount"></span>
+                </a>
+              </span>
+            
+          
+
+          
+
+          
+          
+
+          
+        </div>
+      </header>
+    
+
+
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <p>现在的Android手机双核、四核变得非常普遍，同时CPU频率经常轻松上2G，功耗肯定会显著增加。而大多数的ARM架构的CPU采用的是对称多处理（SMP）的方式处理多CPU。这就意味着每个CPU核心是被平等对待的，同时打开又同时关闭。显然，这样的做法在Mobile Device上显得很耗能。所以，Qualcomm的Snapdragon CPU使用了一种叫非对称多处理（aSMP）的技术，每个CPU核心可以独立的开启和关闭，也能设置不同的频率。因此，针对使用Snapdragon CPU的Android手机，我们可以通过限制CPU核心数或者限制CPU的频率达到节能的目的。</p>
+<a id="more"></a>
+<li>关闭mpdecision</li>
+
+<p>Snapdragon有一个叫做mpdecision的程序管理CPU各个核心的开、关和频率。所以如果想手动开关CPU的核心或者设置CPU核心的频率就必须把这个程序关闭。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">stop mpdecision</span><br></pre></td></tr></table></figure>
+<p>需要注意的是，这个程序会在每次启动后执行，所以每次重启后都需要重新执行上面的命令停止mpdecisiopn。</p>
+<li>设置CPU的核心数</li>
+
+<p>在<code>/sys/devices/system/cpu</code>目录下可以看到你的CPU有几个核心，如果是双核，就是cpu0和cpu1，如果是四核，还会加上cpu2和cpu3。</p>
+<p>随便进一个文件夹，比如cpu1，里面有个online文件。我们可以用cat命令查看该文件的内容</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cat /sys/devices/system/cpu/cpu1/online</span><br></pre></td></tr></table></figure>
+<p>这个文件只有一个数字，0或1。0表示该核心是offline状态的，1表示该核心是online状态的。所以，如果你想关闭这个核心，就把online文件的内容改为“0”；如果想打开该核心，就把文件内容改为“1”。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">echo</span> <span class="string">"0"</span> &gt; /sys/devices/system/cpu/cpu1/online <span class="comment"># 关闭该CPU核心</span></span><br><span class="line"><span class="built_in">echo</span> <span class="string">"1"</span> &gt; /sys/devices/system/cpu/cpu1/online <span class="comment"># 打开该CPU核心</span></span><br></pre></td></tr></table></figure>
+<li>设置CPU的频率</li>
+
+<p>首先我们要修改governor的模式，但在修改前需要查下CPU支持哪些governor的模式</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors</span><br></pre></td></tr></table></figure>
+<p>我用的是Nexus 4手机，所以有以下5个选择，其他的手机型号可能略有不同</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">interactive ondemand userspace powersave performance</span><br></pre></td></tr></table></figure>
+<p>这里<code>performance</code>表示不降频，<code>ondemand</code>表示使用内核提供的功能，可以动态调节频率，<code>powersvae</code>表示省电模式，通常是在最低频率下运行，<code>userspace</code>表示用户模式，在此模式下允许其他用户程序调节CPU频率。</p>
+<p>在这里，我们将模式调整为<code>userspace</code>。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">echo</span> <span class="string">"userspace"</span> &gt; /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor</span><br></pre></td></tr></table></figure>
+<p>然后我们对CPU的频率进行修改，CPU的频率不是可以任意设置的，需要查看<code>scaling_available_frequencies</code>文件，看CPU支持哪些频率。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies</span><br></pre></td></tr></table></figure>
+<p>从我的手机中可以获得以下的值</p>
+<blockquote>
+<p>384000 486000 594000 702000 810000 918000 1026000 1134000 1242000 1350000 1458000 1512000</p>
+</blockquote>
+<p>这里的频率是以Hz为单位的，我准备将cpu0设置为1.242GHz，那就将<code>1242000</code>写入<code>scaling_setspeed</code>即可。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">echo</span> <span class="string">"1242000"</span> &gt; /sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed</span><br></pre></td></tr></table></figure>
+<p>设置好后，我们可以通过<code>scaling_cur_freq</code>文件查看当前这个核心的频率</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq</span><br></pre></td></tr></table></figure>
+<p>最后我们也可以设置下CPU的最大和最小频率，只需要将需要设置的频率值写入<code>scaling_max_freq</code>和<code>scaling_min_freq</code>即可</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">echo</span> <span class="string">"1350000"</span> &gt; /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq <span class="comment"># 设置最大频率</span></span><br><span class="line"><span class="built_in">echo</span> <span class="string">"384000"</span> &gt; /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq <span class="comment"># 设置最小频率</span></span><br></pre></td></tr></table></figure>
+<p>这里要注意的是“最大值”需要<em>大于等于</em>“最小值”。</p>
+<p>注意，这里设置的仅为某个CPU核心的频率，你需要对每个online的CPU核心都进行设置，同时以上对文件的修改均需要<em>root</em>权限。</p>
+<p>通过减少online的核心数和限制CPU频率固然可以起到节省电量的目的，但是性能也是显著降低，所以需要做一个权衡。</p>
+
+      
+    </div>
+    
+    <div>
+      
+        
+      
+    </div>
+
+    <div>
+      
+        
+      
+    </div>
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/Android/" rel="tag">#Android</a>
+          
+            <a href="/tags/Linux/" rel="tag">#Linux</a>
+          
+        </div>
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2013/12/01/unboxing-raspberry-pi/" rel="next" title="树莓派(Raspberry Pi)开箱全纪录">
+                <i class="fa fa-chevron-left"></i> 树莓派(Raspberry Pi)开箱全纪录
+              </a>
+            
+          </div>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2014/05/19/how-to-sign-apk-file/" rel="prev" title="如何为APK程序签名">
+                如何为APK程序签名 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </article>
+
+
+
+    <div class="post-spread">
+      
+        <!-- Go to www.addthis.com/dashboard to customize your tools -->
+<script type = "text/javascript" src = "//s7.addthis.com/js/300/addthis_widget.js#pubid=ra-571f6d6af11447bb" async = "async" ></script>
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+
+          
+  <div class="comments" id="comments">
+    
+      <div class="ds-thread" data-thread-key="2014/05/04/android-cpu-frequency-configuration/"
+           data-title="Android下设置CPU核心数和频率" data-url="http://blog.clarkhuang.com/2014/05/04/android-cpu-frequency-configuration/">
+      </div>
+    
+  </div>
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap" >
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview">
+            站点概览
+          </li>
+        </ul>
+      
+
+      <section class="site-overview sidebar-panel ">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+          <img class="site-author-image" itemprop="image"
+               src="https://avatars2.githubusercontent.com/u/1501638?v=3&s=460"
+               alt="Clark Huang" />
+          <p class="site-author-name" itemprop="name">Clark Huang</p>
+          <p class="site-description motion-element" itemprop="description"></p>
+        </div>
+        <nav class="site-state motion-element">
+          <div class="site-state-item site-state-posts">
+            <a href="/archives">
+              <span class="site-state-item-count">28</span>
+              <span class="site-state-item-name">日志</span>
+            </a>
+          </div>
+
+          
+            <div class="site-state-item site-state-categories">
+              <a href="/categories">
+                <span class="site-state-item-count">5</span>
+                <span class="site-state-item-name">分类</span>
+              </a>
+            </div>
+          
+
+          
+            <div class="site-state-item site-state-tags">
+              <a href="/tags">
+                <span class="site-state-item-count">38</span>
+                <span class="site-state-item-name">标签</span>
+              </a>
+            </div>
+          
+
+        </nav>
+
+        
+          <div class="feed-link motion-element">
+            <a href="/atom.xml" rel="alternate">
+              <i class="fa fa-rss"></i>
+              RSS
+            </a>
+          </div>
+        
+
+        <div class="links-of-author motion-element">
+          
+            
+              <span class="links-of-author-item">
+                <a href="https://github.com/unlucky" target="_blank">
+                  
+                    <i class="fa fa-github"></i>
+                  
+                  GitHub
+                </a>
+              </span>
+            
+              <span class="links-of-author-item">
+                <a href="http://stackoverflow.com/users/3103844/pagenotfound" target="_blank">
+                  
+                    <i class="fa fa-stack-overflow"></i>
+                  
+                  StackOverflow
+                </a>
+              </span>
+            
+          
+        </div>
+
+        
+        
+          <div class="cc-license motion-element" itemprop="license">
+            <a href="http://creativecommons.org/licenses/by-nc-sa/4.0" class="cc-opacity" target="_blank">
+              <img src="/images/cc-by-nc-sa.svg" alt="Creative Commons" />
+            </a>
+          </div>
+        
+
+        
+        <div class="links-of-blogroll motion-element">
+          
+        </div>
+
+      </section>
+
+      
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+            
+              
+            
+            
+              <p class="post-toc-empty">此文章未包含目录</p>
+            
+          </div>
+        </section>
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright" >
+  
+  &copy;  2012 - 
+  <span itemprop="copyrightYear">2016</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Clark Huang</span>
+</div>
+
+<div class="powered-by">
+  由 <a class="theme-link" href="http://hexo.io">Hexo</a> 强力驱动
+</div>
+
+<div class="theme-info">
+  主题 -
+  <a class="theme-link" href="https://github.com/iissnan/hexo-theme-next">
+    NexT.Pisces
+  </a>
+</div>
+
+
+
+
+
+      </div>
+    </footer>
+
+    <div class="back-to-top">
+      <i class="fa fa-arrow-up"></i>
+    </div>
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+  
+  <script type="text/javascript" src="/vendors/jquery/index.js?v=2.1.3"></script>
+
+  
+  <script type="text/javascript" src="/vendors/fastclick/lib/fastclick.min.js?v=1.0.6"></script>
+
+  
+  <script type="text/javascript" src="/vendors/jquery_lazyload/jquery.lazyload.js?v=1.9.7"></script>
+
+  
+  <script type="text/javascript" src="/vendors/velocity/velocity.min.js?v=1.2.1"></script>
+
+  
+  <script type="text/javascript" src="/vendors/velocity/velocity.ui.min.js?v=1.2.1"></script>
+
+  
+  <script type="text/javascript" src="/vendors/fancybox/source/jquery.fancybox.pack.js?v=2.1.5"></script>
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=5.0.1"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=5.0.1"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=5.0.1"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=5.0.1"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=5.0.1"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=5.0.1"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=5.0.1"></script>
+
+
+
+  
+
+  
+    
+  
+
+  <script type="text/javascript">
+    var duoshuoQuery = {short_name:"clarkhuang"};
+    (function() {
+      var ds = document.createElement('script');
+      ds.type = 'text/javascript';ds.async = true;
+      ds.id = 'duoshuo-script';
+      ds.src = (document.location.protocol == 'https:' ? 'https:' : 'http:') + '//static.duoshuo.com/embed.js';
+      ds.charset = 'UTF-8';
+      (document.getElementsByTagName('head')[0]
+      || document.getElementsByTagName('body')[0]).appendChild(ds);
+    })();
+  </script>
+
+  
+    
+  
+
+
+
+
+
+  
+  
+  
+  <script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+      tex2jax: {
+        inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+        processEscapes: true,
+        skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+    });
+  </script>
+
+  <script type="text/x-mathjax-config">
+    MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for (i=0; i < all.length; i += 1) {
+        all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+    });
+  </script>
+  <script type="text/javascript" src="//cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+
+  
+
+  
+
+</body>
+</html>

